@@ -10,7 +10,8 @@ from simulator import Simulator
 
 # Change what is imported to change the methods
 from column_reorderers import colamd as reorder
-from iterative_matrix_augmenters import augment_r as augment_r
+from iterative_matrix_augmenters import update_meaurement as augment_r_measurement
+from iterative_matrix_augmenters import update_variable as augment_r_variable
 from qr_factorizers import np_qr as qr
 from solvers import np_solver as solver
 
@@ -42,11 +43,21 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
             x_prime = solver(Q, R, b)
             x = P @ x_prime
         else:
-            # Solve the linear system iteratively
-            # TODO: I don't really know how this works yet, so this is probably wrong
+            # Update the factorization iteratively
             for i in range(z.shape[1]):
-                R = augment_r(R, z[:, i].reshape(-1, 1))
-            x_prime = solver(Q, R, b)
+                w_T = None          # TODO: We need to add the row (the same row that got added to A) to R
+                gamma = z[:,i].reshape((-1,1))
+                d = Q.T @ b
+
+                # TODO: Based on the data association, we need to either call augment_r_measurement (landmark already
+                # in state) or augment_r_variable (new variable)
+                if True: # Measurement already in state 
+                    # TODO: Perhaps we add a flag in the factor graph manager that tells us when a new variable is added?
+                    R,d = augment_r_measurement(w_T, gamma, R, d)
+                else:   # Measurement not in state
+                    variable_dim = 2    # TODO: We need to figure out how many rows/cols to add to R. If new landmark, just dimension of landmark states.
+                    R,d = augment_r_variable(variable_dim, w_T, R, d)
+            x_prime = solver(R, d)
             x = P @ x_prime
 
         print(f"timestep: {timestep}, x: {x.flatten()}")
