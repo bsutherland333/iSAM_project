@@ -12,7 +12,7 @@ from simulator import Simulator
 from column_reorderers import colamd as reorder
 from iterative_matrix_augmenters import augment_r as augment_r
 from qr_factorizers import np_qr as qr
-from solvers import np_solver as solver
+from solvers import scipy_solver as solver
 
 
 def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, num_iters_before_batch: int):
@@ -39,14 +39,14 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
             A, b = factor_graph_manager.get_A_b_matrix(x)
             A_prime, P = reorder(A)
             Q, R = qr(A_prime)
-            x_prime = solver(Q, R, b)
+            x_prime = solver(R, Q.T @ b)
             x = P @ x_prime
         else:
             # Solve the linear system iteratively
             # TODO: I don't really know how this works yet, so this is probably wrong
             for i in range(z.shape[1]):
                 R = augment_r(R, z[:, i].reshape(-1, 1))
-            x_prime = solver(Q, R, b)
+            x_prime = solver(R, Q.T @ b)
             x = P @ x_prime
 
         print(f"timestep: {timestep}, x: {x.flatten()}")
