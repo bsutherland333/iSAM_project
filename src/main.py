@@ -5,7 +5,7 @@ import numpy as np
 
 from data_parser import DataParser
 from factor_graph_manager import FactorGraphManager
-from models import odometry_model, inverse_odometry_model, sensor_model
+from models import motion_model, inverse_motion_model, sensor_model
 from simulator import Simulator
 
 # Change what is imported to change the methods
@@ -21,9 +21,9 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
         x = data.get_initial_state()
     else:
         x = np.array([[0, 0, 0]]).T
-        data = Simulator(inverse_odometry_model, x)
+        data = Simulator(inverse_motion_model, x)
 
-    factor_graph_manager = FactorGraphManager(odometry_model, sensor_model, x)
+    factor_graph_manager = FactorGraphManager(motion_model, sensor_model, x)
 
     for timestep in range(num_iterations):
         # Run the simulator/data parser
