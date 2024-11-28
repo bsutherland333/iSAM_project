@@ -1,35 +1,92 @@
+from enum import Enum
 import numpy as np
 from numpy.typing import NDArray
 from typing import Tuple, Callable
+
+
+class MotionGeometryType(Enum):
+    """
+    Enum class for specifying what kind of trajectory the robot should follow.
+    """
+    RECTANGLE = "rectangle"
+
 
 class Simulator:
     """
     Simulator class for the robot. Simulates the robot moving through a 2D world with unknown
     landmark positions but known landmark IDs.
     """
-    def __init__(self, inverse_odometry_model: Callable, initial_state: NDArray, dt=1.0,
-                 landmark_locations=None, max_range=5.0, max_bearing=np.pi/4):
+    def __init__(self,
+                 inverse_motion_model: Callable,
+                 sensor_model: Callable,
+                 initial_state:NDArray = np.array([[0.5, 0.5, 0]], float).reshape(-1, 1),
+                 motion_type:MotionGeometryType = MotionGeometryType.RECTANGLE,
+                 motion_size:Tuple[float, float] = (5.0, 2.0),
+                 landmark_locations:NDArray = np.array(
+                    [[0, 0], [3, 0], [6, 0], [0, 3], [3, 3], [6, 3]],
+                    float
+                 ).T,
+                 dt:float = 1.0,
+                 np_seed:int = 0,
+                 ):
         """
         Initializes the simulator.
 
         Parameters:
-        inverse_odometry_model: The inverse odometry model of the robot. Should take in the current
+        inverse_motion_model: The inverse motion model of the robot. Should take in the current
             state and the next state and return the odometry.
-        dt: The size of the time step for the simulator.
+        sensor_model: The sensor model of the robot. Should take in the current state and the
+            location of a landmark and return the measurement.
         initial_state: The initial state of the robot. A 3x1 float numpy array [[x, y, theta]].T.
-        landmark_locations: The locations of the landmarks in the world.
-        max_range: The maximum range of the sensor.
-        max_bearing: The maximum bearing of the sensor, measured from the center of the robot's FOV.
+            Units are in meters and radians.
+        motion_type: The type of motion geometry to use. Currently only rectangle is supported.
+        dt: The size of the time step for the simulator, in seconds.
+        landmark_locations: The locations of the landmarks in the world, in meters.
+        np_seed: The seed to use for the numpy random number generator. Helps with consistency.
         """
-        self.inverse_odometry_model = inverse_odometry_model
-        self.x = initial_state
-        self.dt = dt
-        if landmark_locations is None:
-            self.landmark_locations = np.array([[0, 0], [1, 1], [2, 2]]).T
-        self.max_range = max_range
-        self.max_bearing = max_bearing
+        assert initial_state is None or initial_state.shape == (3, 1)
+        assert initial_state is None or initial_state.dtype == np.float64
+        assert dt > 0
+        assert landmark_locations is None or landmark_locations.shape[0] == 2
+        assert landmark_locations is None or landmark_locations.ndim == 2
+        assert landmark_locations is None or landmark_locations.dtype == np.float64
 
-    def get_next_timestep(self) -> Tuple[NDArray, NDArray]:
+        # Passed parameters
+        self._inverse_motion_model = inverse_motion_model
+        self._sensor_model = sensor_model
+        self._initial_state = initial_state
+        self._prev_x = np.zeros((3, 1), float)
+        self._motion_type = motion_type
+        self._motion_size = motion_size
+        self._landmarks = landmark_locations
+        self._dt = dt
+        np.random.seed(np_seed)
+
+        self._t = 0
+
+        # Shift and rotate landmarks to be relative to the initial state (making the initial state
+        # the origin)
+        self._landmarks -= self._initial_state[0:2]
+        theta = self._initial_state.item(2)
+        self._R_sim_truth = np.array([[np.cos(theta), -np.sin(theta)],
+                                     [np.sin(theta), np.cos(theta)]])
+        self._landmarks = self._R_sim_truth.T @ self._landmarks
+
+        # Sensor parameters
+        self._max_range = 5.0
+        self._range_std = 0.1
+        self._range_bias = 0.0
+        self._max_bearing = np.pi/2
+        self._bearing_std = 0.1
+        self._bearing_bias = 0.0
+
+        # Odometry parameters
+        self._odometry_rotation_std = 0.05
+        self._odometry_rotation_bias = 0.0
+        self._odometry_translation_std = 0.02
+        self._odometry_translation_bias = 0.0
+
+    def get_next_timestep(self) -> Tuple[NDArray, NDArray, NDArray]:
         """
         Steps the simulator forward by one time step.
 
@@ -37,9 +94,57 @@ class Simulator:
         Numpy array of the odometry reading. Is a 3x1 float array, [[rot1, dist, rot2]].T
         Numpy array of the current measurements. Is a 3xN float array where each measurement is a
             column in the array, [[range, bearing, ID], ...].T.
+        Numpy array of the true state of the robot. Is a 3x1 float array, [[x, y, theta]].T.
         """
 
-        return np.array([0, 0, 0]).reshape(-1, 1), np.array([[0, 0], [0, 0], [0, 0]]).T
+        # Iterate the sim
+        self._t += self._dt
 
+        # Get the next state of the robot
+        if self._motion_type == MotionGeometryType.RECTANGLE:
+            next_state = self._get_next_rectangle_state()
+        else:
+            raise Exception("Motion geometry not supported")
 
+        # Get sensor measurements for all landmarks
 
+        # Discard measurmements that are out of range
+
+        # Get the odometry reading
+        odometry = self._inverse_motion_model(self._prev_x, next_state)
+        self._prev_x = next_state.copy()
+        odometry[0] += np.random.normal(self._odometry_rotation_bias, self._odometry_rotation_std)
+        odometry[1] += np.random.normal(self._odometry_translation_bias, self._odometry_translation_std)
+        odometry[2] += np.random.normal(self._odometry_rotation_bias, self._odometry_rotation_std)
+
+        # Transform from the robot frame to the world frame
+        next_state[:2] = self._R_sim_truth @ next_state[:2]
+        next_state += self._initial_state
+
+        return odometry, np.array([[0, 0], [0, 0], [0, 0]]).T, next_state
+
+    def _get_next_rectangle_state(self) -> NDArray:
+        width = self._motion_size[0]
+        height = self._motion_size[1]
+
+        loop_dist = 2 * width + 2 * height
+        curr_dist = self._t % loop_dist  # Assume velocity is 1 m/s
+
+        if curr_dist < width:
+            x = curr_dist
+            y = 0
+            theta = 0
+        elif curr_dist < width + height:
+            x = width
+            y = curr_dist - width
+            theta = np.pi/2
+        elif curr_dist < 2 * width + height:
+            x = width - (curr_dist - width - height)
+            y = height
+            theta = -np.pi
+        else:
+            x = 0
+            y = height - (curr_dist - 2 * width - height)
+            theta = -np.pi/2
+
+        return np.array([x, y, theta], float).reshape(-1, 1)
