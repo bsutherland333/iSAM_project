@@ -20,14 +20,14 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
         data = DataParser(data_filepath)
         x = data.get_initial_state()
     else:
-        x = np.array([[0, 0, 0]]).T
-        data = Simulator(inverse_motion_model, x)
+        data = Simulator(inverse_motion_model, sensor_model, np_seed=0)
+        x = data._initial_state
 
     factor_graph_manager = FactorGraphManager(motion_model, sensor_model, x)
 
     for timestep in range(num_iterations):
         # Run the simulator/data parser
-        u, z = data.get_next_timestep()
+        u, z, x_truth = data.get_next_timestep()
 
         # Add the measurements to the factor graph and get the A matrix
         for i in range(z.shape[1]):

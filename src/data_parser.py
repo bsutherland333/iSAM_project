@@ -21,7 +21,7 @@ class DataParser:
         """
         return np.array([0, 0, 0], dtype=float).reshape(3, 1)
 
-    def get_next_timestep(self):
+    def get_next_timestep(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Gets the odometry and sensor measurements for the next timestep.
 
@@ -31,4 +31,6 @@ class DataParser:
             column in the array, [[range, bearing, ID], ...].T.
         """
 
-        return np.array([0, 0, 0]).reshape(-1, 1), np.array([[0, 0], [0, 0], [0, 0]]).T
+        return np.array([0, 0, 0]).reshape(-1, 1), \
+               np.array([[0, 0], [0, 0], [0, 0]]).T, \
+               np.array([0, 0, 0]).reshape(-1, 1)

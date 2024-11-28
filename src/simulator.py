@@ -6,7 +6,8 @@ from typing import Tuple, Callable
 
 class MotionGeometryType(Enum):
     """
-    Enum class for specifying what kind of trajectory the robot should follow.
+    Enum class for specifying what kind of trajectory the robot should follow. We can add more
+    trajectories in the future if we need.
     """
     RECTANGLE = "rectangle"
 
