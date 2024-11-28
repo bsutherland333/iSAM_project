@@ -63,6 +63,7 @@ class Simulator:
         np.random.seed(np_seed)
 
         self._t = 0
+        self._landmark_ids = np.zeros(landmark_locations.shape[1], int) - 1
 
         # Shift and rotate landmarks to be relative to the initial state (making the initial state
         # the origin)
@@ -106,24 +107,39 @@ class Simulator:
         else:
             raise Exception("Motion geometry not supported")
 
-        # Get sensor measurements for all landmarks
+        # Get sensor measurements
+        measurements = []
+        for i in range(self._landmarks.shape[1]):
+            landmark = self._landmarks[:, i].reshape(-1, 1)
+            measurement = self._sensor_model(next_state, landmark)
 
-        # Discard measurmements that are out of range
+            # Landmark visible, add to measurements
+            if measurement[0] <= self._max_range and np.abs(measurement[1]) <= self._max_bearing:
+                # Check if id has been assigned
+                if self._landmark_ids[i] == -1:
+                    self._landmark_ids[i] = np.max(self._landmark_ids) + 1
+
+                measurement[0] += np.random.normal(self._range_bias, self._range_std)
+                measurement[1] += np.random.normal(self._bearing_bias, self._bearing_std)
+
+                measurements.append(np.array([measurement.item(0), measurement.item(1), self._landmark_ids[i]], float).reshape(-1, 1))
+        measurements = np.hstack(measurements)
 
         # Get the odometry reading
         odometry = self._inverse_motion_model(self._prev_x, next_state)
-        self._prev_x = next_state.copy()
+        self._prev_x = next_state
         odometry[0] += np.random.normal(self._odometry_rotation_bias, self._odometry_rotation_std)
         odometry[1] += np.random.normal(self._odometry_translation_bias, self._odometry_translation_std)
         odometry[2] += np.random.normal(self._odometry_rotation_bias, self._odometry_rotation_std)
 
         # Transform from the robot frame to the world frame
-        next_state[:2] = self._R_sim_truth @ next_state[:2]
-        next_state += self._initial_state
+        global_state = next_state.copy()
+        global_state[:2] = self._R_sim_truth @ global_state[:2]
+        global_state += self._initial_state
 
-        return odometry, np.array([[0, 0], [0, 0], [0, 0]]).T, next_state
+        return odometry, measurements, global_state
 
-    def _get_next_rectangle_state(self) -> NDArray:
+    def _get_next_rectangle_state(self):
         width = self._motion_size[0]
         height = self._motion_size[1]
 
