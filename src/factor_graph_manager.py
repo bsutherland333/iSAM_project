@@ -79,7 +79,7 @@ class FactorGraphManager:
             current = poseID*self.dim_state
             previous = (poseID-1)*self.dim_state
             next = (poseID+1)*self.dim_state
-            F_evaluated = F(x[previous:current], u)
+            F_evaluated = F(x[previous:current], u).reshape(self.dim_state, self.dim_state)
             G_evaluated = G(x[current:next])
             b[current:next] = u  # TODO: we have to pre-multiply by inverse transpose sqrt of process noise
             A[current:next, previous:current] = F_evaluated # TODO: we have to pre-multiply by inverse transpose sqrt of process noise
@@ -92,8 +92,8 @@ class FactorGraphManager:
             pose_next = pose_current + self.dim_state
             landmark_current = landmark_start + 2*landmarkID
             landmark_next = landmark_current + 2
-            H_evaluated = H(x[pose_current:pose_next], x[landmark_current:landmark_next])
-            J_evaluated = J(x[pose_current:pose_next], x[landmark_current:landmark_next])
+            H_evaluated = H(x[pose_current:pose_next], x[landmark_current:landmark_next]).reshape(len(z), self.dim_state)
+            J_evaluated = J(x[pose_current:pose_next], x[landmark_current:landmark_next]).reshape(len(z), len(z))
             b[landmark_current:landmark_next] = z # TODO: we have to pre-multiply by inverse transpose sqrt of measurement noise
             A[landmark_current:landmark_next, pose_current:pose_next] = H_evaluated # TODO: we have to pre-multiply by inverse transpose sqrt of measurement noise
             A[landmark_current:landmark_next, landmark_current:landmark_next] = J_evaluated # TODO: we have to pre-multiply by inverse transpose sqrt of measurement noise
