@@ -39,24 +39,27 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
             # Solve the linear system with a batch update
             A, b = factor_graph_manager.get_A_b_matrix(x)
             A_prime, P = reorder(A)
+
+            # Compute full QR factorization and the d vector
             Q, R = qr(A_prime)
-            x_prime = solver(R, Q.T @ b)
+            d = Q.T @ b
+
+            x_prime = solver(R, d)
             x = P @ x_prime
         else:
             # Update the factorization iteratively
             for i in range(z.shape[1]):
                 w_T = None          # TODO: We need to add the row (the same row that got added to A) to R
                 gamma = z[:,i].reshape((-1,1))
-                d = Q.T @ b
 
                 # TODO: Based on the data association, we need to either call augment_r_measurement (landmark already
                 # in state) or augment_r_variable (new variable)
                 if True: # Measurement already in state 
                     # TODO: Perhaps we add a flag in the factor graph manager that tells us when a new variable is added?
-                    R,d = augment_r_measurement(w_T, gamma, R, d)
+                    R, d = augment_r_measurement(w_T, gamma, R, d)
                 else:   # Measurement not in state
                     variable_dim = 2    # TODO: We need to figure out how many rows/cols to add to R. If new landmark, just dimension of landmark states.
-                    R,d = augment_r_variable(variable_dim, w_T, R, d)
+                    R, d = augment_r_variable(variable_dim, w_T, R, d)
             x_prime = solver(R, d)
             x = P @ x_prime
 
