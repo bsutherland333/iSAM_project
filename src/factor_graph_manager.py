@@ -7,7 +7,7 @@ class FactorGraphManager:
     """
     Class to construct the A matrix from a set of given odometry and sensor measurements.
     """
-    def __init__(self, odometry_model: Callable, sensor_model: Callable, initial_state: NDArray) -> None:
+    def __init__(self, initial_state: NDArray, dim_state: int) -> None:
         """
         Initialize the FactorGraphManager.
 
@@ -17,12 +17,16 @@ class FactorGraphManager:
         sensor_model: Callable function of the sensor model we are using. Input should be x and
             landmark ID, output should be z.
         """
-        self.odometry_model = odometry_model
-        self.sensor_model = sensor_model
-        self.x = initial_state
-        self.prev_A_width = initial_state.shape[0]
 
-    def add_measurement(self, z: NDArray) -> None:
+        self.x = initial_state
+        self.dim_state = dim_state
+        self.prev_A_width = initial_state.shape[0]
+        self.num_landmarks = 0
+        self.poseID = 0
+        self.odometry_info = []
+        self.sensor_info = []
+
+    def add_measurement(self, z: NDArray, H: Callable, J: Callable) -> None:
         """
         Adds a measurement to the factor graph.
 
@@ -32,8 +36,11 @@ class FactorGraphManager:
         """
         assert z.shape == (3, 1)
         assert z.dtype == np.float64
+        # (landmarkID, poseID, H, J, [range, bearing])
+        info = (z[2], self.poseID, H, J, z[:2])
+        self.sensor_info.append(info)
 
-    def add_odometry(self, u: NDArray) -> None:
+    def add_odometry(self, u: NDArray, F: Callable, G: Callable) -> None:
         """
         Adds an odometry measurement to the factor graph.
 
@@ -42,6 +49,10 @@ class FactorGraphManager:
         """
         assert u.shape == (3, 1)
         assert u.dtype == np.float64
+        # (poseID, u, F, G)
+        info = (self.poseID, u, F, G)
+        self.odometry_info.append(info)
+        self.poseID += 1
 
     def get_A_b_matrix(self, x: NDArray) -> Tuple[NDArray, NDArray]:
         """
@@ -60,5 +71,33 @@ class FactorGraphManager:
         assert x.shape == (self.prev_A_width, 1)
         assert x.dtype == np.float64
 
-        return np.zeros((9, 6)), np.zeros((9, 1))
+        A = np.zeros((self.dim_state*self.poseID + 2*self.num_landmarks, len(x)))
+        b = np.zeros((self.dim_state*self.poseID + 2*self.num_landmarks, 1))
+
+        for odometry_data in self.odometry_info:
+            poseID, u, F, G = odometry_data
+            current = poseID*self.dim_state
+            previous = (poseID-1)*self.dim_state
+            next = (poseID+1)*self.dim_state
+            F_evaluated = F(x[previous:current], u)
+            G_evaluated = G(x[current:next])
+            b[current:next] = u  # TODO: we have to pre-multiply by inverse transpose sqrt of process noise
+            A[current:next, previous:current] = F_evaluated # TODO: we have to pre-multiply by inverse transpose sqrt of process noise
+            A[current:next, current:next] = G_evaluated # TODO: we have to pre-multiply by inverse transpose sqrt of process noise
+
+        for sensor_data in self.sensor_info:
+            landmarkID, measured_poseID, H, J, z = sensor_data
+            landmark_start = self.poseID*self.dim_state
+            pose_current = measured_poseID*self.dim_state
+            pose_next = pose_current + self.dim_state
+            landmark_current = landmark_start + 2*landmarkID
+            landmark_next = landmark_current + 2
+            H_evaluated = H(x[pose_current:pose_next], x[landmark_current:landmark_next])
+            J_evaluated = J(x[pose_current:pose_next], x[landmark_current:landmark_next])
+            b[landmark_current:landmark_next] = z # TODO: we have to pre-multiply by inverse transpose sqrt of measurement noise
+            A[landmark_current:landmark_next, pose_current:pose_next] = H_evaluated # TODO: we have to pre-multiply by inverse transpose sqrt of measurement noise
+            A[landmark_current:landmark_next, landmark_current:landmark_next] = J_evaluated # TODO: we have to pre-multiply by inverse transpose sqrt of measurement noise
+
+
+        return A, b
 

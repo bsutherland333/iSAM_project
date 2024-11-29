@@ -7,6 +7,7 @@ from data_parser import DataParser
 from factor_graph_manager import FactorGraphManager
 from models import odometry_model, inverse_odometry_model, sensor_model
 from simulator import Simulator
+from jax_jacobians import make_F_H_J_G
 
 # Change what is imported to change the methods
 from column_reorderers import colamd as reorder
@@ -23,7 +24,8 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
         x = np.array([[0, 0, 0]]).T
         data = Simulator(inverse_odometry_model, x)
 
-    factor_graph_manager = FactorGraphManager(odometry_model, sensor_model, x)
+    F, H, J, G = make_F_H_J_G(odometry_model, sensor_model)
+    factor_graph_manager = FactorGraphManager(x, 3)
 
     for timestep in range(num_iterations):
         # Run the simulator/data parser
@@ -31,8 +33,8 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
 
         # Add the measurements to the factor graph and get the A matrix
         for i in range(z.shape[1]):
-            factor_graph_manager.add_measurement(z[:, i].reshape(-1, 1))
-        factor_graph_manager.add_odometry(u)
+            factor_graph_manager.add_measurement(z[:, i].reshape(-1, 1), H, J)
+        factor_graph_manager.add_odometry(u, F, G)
 
         if not use_iterative_solver or timestep % num_iters_before_batch == 0:
             # Solve the linear system with a batch update
