@@ -21,7 +21,9 @@ class FactorGraphManager:
         self.x = initial_state
         self.dim_state = dim_state
         self.prev_A_width = initial_state.shape[0]
+        self.landmarkIDs = []
         self.num_landmarks = 0
+        self.num_measurements = 0
         self.poseID = 0
         self.odometry_info = []
         self.sensor_info = []
@@ -36,9 +38,14 @@ class FactorGraphManager:
         """
         assert z.shape == (3, 1)
         assert z.dtype == np.float64
-        # (landmarkID, poseID, H, J, [range, bearing])
-        info = (z[2], self.poseID, H, J, z[:2])
+        # (landmarkID, poseID, measurementID, H, J, [range, bearing])
+        landmarkID = int(z[2,0])
+        info = (landmarkID, self.poseID, self.num_measurements, H, J, z[:2])
         self.sensor_info.append(info)
+        self.num_measurements += 1
+        if landmarkID not in self.landmarkIDs:
+            self.num_landmarks += 1
+            self.landmarkIDs.append(landmarkID)
 
     def add_odometry(self, u: NDArray, F: Callable, G: Callable) -> None:
         """
@@ -68,35 +75,44 @@ class FactorGraphManager:
         Returns:
         The A matrix and its associated b vector.
         """
-        assert x.shape == (self.prev_A_width, 1)
+        # assert x.shape == (self.prev_A_width, 1)
         assert x.dtype == np.float64
-
-        A = np.zeros((self.dim_state*self.poseID + 2*self.num_landmarks, len(x)))
-        b = np.zeros((self.dim_state*self.poseID + 2*self.num_landmarks, 1))
+        
+        A = np.zeros((self.dim_state*self.poseID + 2*self.num_measurements, len(x)))
+        b = np.zeros((self.dim_state*self.poseID + 2*self.num_measurements, 1))
 
         for odometry_data in self.odometry_info:
             poseID, u, F, G = odometry_data
-            current = poseID*self.dim_state
-            previous = (poseID-1)*self.dim_state
-            next = (poseID+1)*self.dim_state
-            F_evaluated = F(x[previous:current], u).reshape(self.dim_state, self.dim_state)
-            G_evaluated = G(x[current:next])
-            b[current:next] = u  # TODO: we have to pre-multiply by inverse transpose sqrt of process noise
-            A[current:next, previous:current] = F_evaluated # TODO: we have to pre-multiply by inverse transpose sqrt of process noise
-            A[current:next, current:next] = G_evaluated # TODO: we have to pre-multiply by inverse transpose sqrt of process noise
+            if poseID == 0:
+                A[:self.dim_state, :self.dim_state] = -np.eye(self.dim_state)
+                b[:self.dim_state] = u # TODO: I need to figure out what to do for the prior here
+            else:
+                current = poseID*self.dim_state
+                previous = current - self.dim_state
+                next = current + self.dim_state
+                print(previous, current, next)
+                print(x[previous:current])
+                F_evaluated = F(x[previous:current], u).reshape(self.dim_state, self.dim_state)
+                G_evaluated = G(x[current:next])
+                b[current:next] = u  # TODO: we have to pre-multiply by inverse transpose sqrt of process noise
+                A[current:next, previous:current] = F_evaluated # TODO: we have to pre-multiply by inverse transpose sqrt of process noise
+                A[current:next, current:next] = G_evaluated # TODO: we have to pre-multiply by inverse transpose sqrt of process noise
 
         for sensor_data in self.sensor_info:
-            landmarkID, measured_poseID, H, J, z = sensor_data
+            landmarkID, measured_poseID, measurementID, H, J, z = sensor_data
             landmark_start = self.poseID*self.dim_state
             pose_current = measured_poseID*self.dim_state
             pose_next = pose_current + self.dim_state
             landmark_current = landmark_start + 2*landmarkID
             landmark_next = landmark_current + 2
-            H_evaluated = H(x[pose_current:pose_next], x[landmark_current:landmark_next]).reshape(len(z), self.dim_state)
+            measurement_current = self.poseID*self.dim_state + 2*measurementID
+            measurement_next = measurement_current + 2
+            H_evaluated = H(x[pose_current:pose_next], x[landmark_current:landmark_next]).reshape(2, 3)
             J_evaluated = J(x[pose_current:pose_next], x[landmark_current:landmark_next]).reshape(len(z), len(z))
-            b[landmark_current:landmark_next] = z # TODO: we have to pre-multiply by inverse transpose sqrt of measurement noise
-            A[landmark_current:landmark_next, pose_current:pose_next] = H_evaluated # TODO: we have to pre-multiply by inverse transpose sqrt of measurement noise
-            A[landmark_current:landmark_next, landmark_current:landmark_next] = J_evaluated # TODO: we have to pre-multiply by inverse transpose sqrt of measurement noise
+            print(measurement_current, measurement_next, z)
+            b[measurement_current:measurement_next] = z # TODO: we have to pre-multiply by inverse transpose sqrt of measurement noise
+            A[measurement_current:measurement_next, pose_current:pose_next] = H_evaluated # TODO: we have to pre-multiply by inverse transpose sqrt of measurement noise
+            A[measurement_current:measurement_next, landmark_current:landmark_next] = J_evaluated # TODO: we have to pre-multiply by inverse transpose sqrt of measurement noise
 
 
         return A, b
