@@ -82,12 +82,12 @@ def sensor_model(x: NDArray, landmark: NDArray) -> NDArray:
     del_x = landmark[0] - x[0]
     del_y = landmark[1] - x[1]
 
-    range = np.sqrt(del_x**2 + del_y**2)
-    bearing = np.arctan2(del_y, del_x) - x[2]
+    range = jnp.sqrt(del_x**2 + del_y**2)
+    bearing = jnp.arctan2(del_y, del_x) - x[2]
 
     bearing = _wrap_within_pi(bearing)
 
-    return np.array([range, bearing], dtype=float).reshape(2, 1)
+    return jnp.array([range, bearing], dtype=float).reshape(2, 1)
 
 
 def _wrap_within_pi(val: float) -> float:
