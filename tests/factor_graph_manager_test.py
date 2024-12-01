@@ -56,25 +56,28 @@ def test_factor_graph_manager():
     x = jnp.array([0,0,0,1.,0.,0.,1.5,-1]).reshape(8,1)
     A, b = factor_graph_manager.get_A_b_matrix(x)
 
-    b_expected = np.array([0, 1., 0, 2, np.pi/4, 1, np.pi]).reshape(-1,1)
+    b_expected = np.array([0., 0., 0., 0, 1., 0, 2, np.pi/4, 1, np.pi]).reshape(-1,1)
     x0 = np.array([0.,0.,0.]).reshape(3,1)
     l0 = np.array([1.5, -1]).reshape(2,1)
     F_1_2 = F(x0, odometry1).reshape(3,3)
     H_1_1 = H(x0, l0).reshape(2,3)
     J_1_1 = J(x0, l0).reshape(2,2)
 
-    x1 = np.array([0., 1., 0.]).reshape(-1,1)
+    x1 = np.array([1., 0., 0.]).reshape(-1,1)
     H_1_2 = H(x1, l0).reshape(2,3)
     J_1_2 = J(x1, l0).reshape(2,2)
 
     A_expected = np.array([[-1, 0, 0, 0, 0, 0, 0, 0],
                            [0, -1, 0, 0, 0, 0, 0, 0],
                            [0, 0, -1, 0, 0, 0, 0, 0],
+                           [F_1_2[0,0], F_1_2[0,1], F_1_2[0,2], -1, 0, 0, 0, 0],
+                           [F_1_2[1,0], F_1_2[1,1], F_1_2[1,2], 0, -1, 0, 0, 0],
+                           [F_1_2[2,0], F_1_2[2,1], F_1_2[2,2], 0, 0, -1, 0, 0],
                            [H_1_1[0,0], H_1_1[0,1], H_1_1[0,2], 0, 0, 0, J_1_1[0,0], J_1_1[0,1]],
                            [H_1_1[1,0], H_1_1[1,1], H_1_1[1,2], 0, 0, 0, J_1_1[1,0], J_1_1[1,1]],
                            [0, 0, 0, H_1_2[0,0], H_1_2[0,1], H_1_2[0,2], J_1_2[0,0], J_1_2[0,1]],
                            [0, 0, 0, H_1_2[1,0], H_1_2[1,1], H_1_2[1,2], J_1_2[1,0], J_1_2[1,1]]])
-
+    
     assert np.allclose(b, b_expected)
     assert np.allclose(A, A_expected)
     

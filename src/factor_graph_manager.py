@@ -78,37 +78,37 @@ class FactorGraphManager:
         # assert x.shape == (self.prev_A_width, 1)
         assert x.dtype == np.float64
         
-        A = np.zeros((self.dim_state*self.poseID + 2*self.num_measurements, len(x)))
-        b = np.zeros((self.dim_state*self.poseID + 2*self.num_measurements, 1))
+        
+        A = np.zeros((self.dim_state*self.poseID + self.dim_state + 2*self.num_measurements, len(x)))
+        b = np.zeros((self.dim_state*self.poseID + self.dim_state + 2*self.num_measurements, 1))
+
+        # Set the prior
+        A[:self.dim_state,:self.dim_state] = -np.eye(self.dim_state)
+        b[:self.dim_state] = self.x
 
 
         for odometry_data in self.odometry_info:
             poseID, u, F, G = odometry_data
-            print(poseID)
-            if poseID == 0:
-                A[:self.dim_state, :self.dim_state] = -np.eye(self.dim_state)
-                b[:self.dim_state] = u # TODO: I need to figure out what to do for the prior here
-            else:
-                current = poseID*self.dim_state
-                previous = current - self.dim_state
-                next = current + self.dim_state
-                print(previous, current, next)
-                print(x[previous:current])
-                F_evaluated = F(x[previous:current], u).reshape(self.dim_state, self.dim_state)
-                G_evaluated = G(x[current:next])
-                b[current:next] = u  # TODO: we have to pre-multiply by inverse transpose sqrt of process noise
-                A[current:next, previous:current] = F_evaluated # TODO: we have to pre-multiply by inverse transpose sqrt of process noise
-                A[current:next, current:next] = G_evaluated # TODO: we have to pre-multiply by inverse transpose sqrt of process noise
+            poseID += 1 
+            current = poseID*self.dim_state
+            previous = current - self.dim_state
+            next = current + self.dim_state
+            F_evaluated = F(x[previous:current], u).reshape(self.dim_state, self.dim_state)
+            G_evaluated = G(x[current:next])
+            b[current:next] = u  # TODO: we have to pre-multiply by inverse transpose sqrt of process noise
+            A[current:next, previous:current] = F_evaluated # TODO: we have to pre-multiply by inverse transpose sqrt of process noise
+            A[current:next, current:next] = G_evaluated # TODO: we have to pre-multiply by inverse transpose sqrt of process noise
 
         for sensor_data in self.sensor_info:
             landmarkID, measured_poseID, measurementID, H, J, z = sensor_data
-            landmark_start = self.poseID*self.dim_state
+            landmark_start = (1+self.poseID)*self.dim_state
             pose_current = measured_poseID*self.dim_state
             pose_next = pose_current + self.dim_state
             landmark_current = landmark_start + 2*landmarkID
             landmark_next = landmark_current + 2
-            measurement_current = self.poseID*self.dim_state + 2*measurementID
+            measurement_current = (1+self.poseID)*self.dim_state + 2*measurementID
             measurement_next = measurement_current + 2
+            print(pose_current, pose_next, landmark_current, landmark_next)
             H_evaluated = H(x[pose_current:pose_next], x[landmark_current:landmark_next]).reshape(2, 3)
             J_evaluated = J(x[pose_current:pose_next], x[landmark_current:landmark_next]).reshape(len(z), len(z))
             b[measurement_current:measurement_next] = z # TODO: we have to pre-multiply by inverse transpose sqrt of measurement noise
