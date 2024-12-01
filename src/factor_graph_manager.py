@@ -81,8 +81,10 @@ class FactorGraphManager:
         A = np.zeros((self.dim_state*self.poseID + 2*self.num_measurements, len(x)))
         b = np.zeros((self.dim_state*self.poseID + 2*self.num_measurements, 1))
 
+
         for odometry_data in self.odometry_info:
             poseID, u, F, G = odometry_data
+            print(poseID)
             if poseID == 0:
                 A[:self.dim_state, :self.dim_state] = -np.eye(self.dim_state)
                 b[:self.dim_state] = u # TODO: I need to figure out what to do for the prior here
@@ -109,7 +111,6 @@ class FactorGraphManager:
             measurement_next = measurement_current + 2
             H_evaluated = H(x[pose_current:pose_next], x[landmark_current:landmark_next]).reshape(2, 3)
             J_evaluated = J(x[pose_current:pose_next], x[landmark_current:landmark_next]).reshape(len(z), len(z))
-            print(measurement_current, measurement_next, z)
             b[measurement_current:measurement_next] = z # TODO: we have to pre-multiply by inverse transpose sqrt of measurement noise
             A[measurement_current:measurement_next, pose_current:pose_next] = H_evaluated # TODO: we have to pre-multiply by inverse transpose sqrt of measurement noise
             A[measurement_current:measurement_next, landmark_current:landmark_next] = J_evaluated # TODO: we have to pre-multiply by inverse transpose sqrt of measurement noise
