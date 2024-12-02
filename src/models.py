@@ -90,6 +90,33 @@ def sensor_model(x: NDArray, landmark: NDArray) -> NDArray:
     return jnp.array([range, bearing], dtype=float).reshape(2, 1)
 
 
+def inverse_sensor_model(x: NDArray, z: NDArray) -> NDArray:
+    """
+    Inverse sensor model for our system. Like the sensor model, but instead of getting the expected
+    measurement given the current state and landmark, we get the landmark position given
+    the current state and measurement.
+
+    Parameters:
+    x: The current state of the system. A 3x1 float numpy array [[x, y, theta]].T.
+    z: The measurement to the landmark. A 2x1 float numpy array [[range, bearing]].T.
+
+    Returns:
+    The estimated position of the landmark. A 2x1 float numpy array [[x, y]].T.
+    """
+    assert x.shape == (3, 1)
+    assert x.dtype == np.float64
+    assert z.shape == (2, 1)
+    assert z.dtype == np.float64
+
+    range = z[0]
+    bearing = z[1]
+
+    x_landmark = x[0] + range * np.cos(x[2] + bearing)
+    y_landmark = x[1] + range * np.sin(x[2] + bearing)
+
+    return np.array([x_landmark, y_landmark], dtype=float).reshape(2, 1)
+
+
 def _wrap_within_pi(val: float) -> float:
     """
     Wrap a value within the range of -pi to pi.
