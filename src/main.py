@@ -28,7 +28,7 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
         data = Simulator(inverse_motion_model, sensor_model, np_seed=0, initial_state=x, landmark_locations=true_landmark_positions)
 
     F, H, J, G = make_F_H_J_G(motion_model, sensor_model)
-    factor_graph_manager = FactorGraphManager(3)
+    factor_graph_manager = FactorGraphManager(inverse_motion_model, sensor_model, x)
 
     x_truth_hist = [x]
     measurement_hist = []
@@ -45,16 +45,17 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
         # Also append states to the state histories
         current_state = np.array(pose_hist[-1]).reshape(-1,1)
         factor_graph_manager.add_odometry(u, F, G)
-        pose_hist.append(list(motion_model(current_state, u)))
+        pose_hist.append(motion_model(current_state, u))
 
         for i in range(z.shape[1]):
             current_measurement = z[:, i].reshape(-1, 1)
+            current_state = np.array(pose_hist[-1]).reshape(-1,1)
             factor_graph_manager.add_measurement(current_measurement, H, J)
 
             if z[2,i] not in landmark_id_hist:
                 landmark_guess = inverse_sensor_model(current_state, current_measurement[:2])
                 landmark_hist.append(landmark_guess)
-                landmark_id_hist.append(z[2, i])
+                landmark_id_hist.append(z[2, i].astype(int))
 
         if not use_iterative_solver or timestep % num_iters_before_batch == 0:
             # Solve the linear system with a batch update
@@ -62,22 +63,22 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
             A, b = factor_graph_manager.get_A_b_matrix(x)
             A_prime, P = reorder(A)
             Q, R = qr(A_prime)
-            x_prime = solver(R, Q.T @ b)
-            x += P @ x_prime
+            x_delta_prime = solver(R, Q.T @ b)
+            x += P @ x_delta_prime
         else:
             # Solve the linear system iteratively
             # TODO: I don't really know how this works yet, so this is probably wrong
             for i in range(z.shape[1]):
                 R = augment_r(R, z[:, i].reshape(-1, 1))
-            x_prime = solver(R, Q.T @ b)
-            x += P @ x_prime
+            x_delta_prime = solver(R, Q.T @ b)
+            x += P @ x_delta_prime
 
         if plot_live or timestep == num_iterations - 1:
             plot_factor_graph(estimated_robot_poses=x[:len(pose_hist)*3].reshape(-1, 3).T,
                               true_robot_poses=np.hstack(x_truth_hist),
                               estimated_landmark_positions=x[len(pose_hist)*3:].reshape(-1, 2).T,
                               true_landmark_positions=true_landmark_positions,
-                              measurement_associations=np.hstack(measurement_hist),
+                              #measurement_associations=np.hstack(measurement_hist),
                               hold_on=True if timestep == num_iterations - 1 else False
                               )
 

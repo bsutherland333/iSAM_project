@@ -7,18 +7,26 @@ class FactorGraphManager:
     """
     Class to construct the A matrix from a set of given odometry and sensor measurements.
     """
-    def __init__(self, dim_state: int) -> None:
+    def __init__(self,
+                 inverse_odometry_model: Callable,
+                 sensor_model: Callable,
+                 initial_state: NDArray) -> None:
         """
         Initialize the FactorGraphManager.
 
         Parameters:
-        odometry_model: Callable function of the odometry model we are using. Input should be x and u,
-            output should be x.
+        inverse_odometry_model: Callable function of the inverse odometry model we are using. Input
+            should be x0 and x1, output should be u.
         sensor_model: Callable function of the sensor model we are using. Input should be x and
             landmark ID, output should be z.
         """
+        assert initial_state.shape == (3, 1)
+        assert initial_state.dtype == np.float64
 
-        self.dim_state = dim_state
+        self.inverse_odometry_model = inverse_odometry_model
+        self.sensor_model = sensor_model
+        self.initial_state = initial_state.copy()
+        self.dim_state = initial_state.shape[0]
         self.landmarkIDs = []
         self.num_landmarks = 0
         self.num_measurements = 0
@@ -29,6 +37,9 @@ class FactorGraphManager:
     def add_measurement(self, z: NDArray, H: Callable, J: Callable) -> None:
         """
         Adds a measurement to the factor graph.
+
+        TODO: Currently requires that this is called after add_odometry, an error will occur
+            otherwise.
 
         Parameters:
         z: The measurement to add to the factor graph. A 3x1 float numpy array [[range, bearing,
@@ -74,24 +85,24 @@ class FactorGraphManager:
         The A matrix and its associated b vector.
         """
         assert x.dtype == np.float64
-        
-        
+        assert x.shape[0] == self.dim_state*(self.poseID + 1) + 2*self.num_landmarks
+
         A = np.zeros((self.dim_state*self.poseID + self.dim_state + 2*self.num_measurements, len(x)))
         b = np.zeros((self.dim_state*self.poseID + self.dim_state + 2*self.num_measurements, 1))
 
         # Set the prior
         A[:self.dim_state,:self.dim_state] = -np.eye(self.dim_state)
-        b[:self.dim_state] = x[:self.dim_state]
+        b[:self.dim_state] = x[:self.dim_state] - self.initial_state
 
         for odometry_data in self.odometry_info:
             poseID, u, F, G = odometry_data
-            poseID += 1 
+            poseID += 1
             current = poseID*self.dim_state
             previous = current - self.dim_state
             next = current + self.dim_state
             F_evaluated = F(x[previous:current], u).reshape(self.dim_state, self.dim_state)
             G_evaluated = G(x[current:next])
-            b[current:next] = u  # TODO: we have to pre-multiply by inverse transpose sqrt of process noise
+            b[current:next] = u - self.inverse_odometry_model(x[previous:current], x[current:next])  # TODO: we have to pre-multiply by inverse transpose sqrt of process noise
             A[current:next, previous:current] = F_evaluated # TODO: we have to pre-multiply by inverse transpose sqrt of process noise
             A[current:next, current:next] = G_evaluated # TODO: we have to pre-multiply by inverse transpose sqrt of process noise
 
@@ -106,7 +117,7 @@ class FactorGraphManager:
             measurement_next = measurement_current + 2
             H_evaluated = H(x[pose_current:pose_next], x[landmark_current:landmark_next]).reshape(2, 3)
             J_evaluated = J(x[pose_current:pose_next], x[landmark_current:landmark_next]).reshape(len(z), len(z))
-            b[measurement_current:measurement_next] = z # TODO: we have to pre-multiply by inverse transpose sqrt of measurement noise
+            b[measurement_current:measurement_next] = z - self.sensor_model(x[pose_current:pose_next],)  # TODO: we have to pre-multiply by inverse transpose sqrt of measurement noise
             A[measurement_current:measurement_next, pose_current:pose_next] = H_evaluated # TODO: we have to pre-multiply by inverse transpose sqrt of measurement noise
             A[measurement_current:measurement_next, landmark_current:landmark_next] = J_evaluated # TODO: we have to pre-multiply by inverse transpose sqrt of measurement noise
 
