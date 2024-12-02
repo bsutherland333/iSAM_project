@@ -26,6 +26,29 @@ class FactorGraphManager:
         self.odometry_info = []
         self.sensor_info = []
 
+        # These match the values in simulator.py
+        self._range_std = 0.1
+        self._bearing_std = 0.1
+
+        self.measurement_cov = np.array([[self._range_std**2, 0],
+                                         [0, self._bearing_std**2]])
+        
+        # since diagonal we can just make the sqrt of the inverse be the sqrt of the diagonal
+        self.sqrt_inv_measurement_cov = np.sqrt(self.measurement_cov)
+        self.sqrt_inv_measurement_cov[self.sqrt_inv_measurement_cov != 0] = 1/self.sqrt_inv_measurement_cov[self.sqrt_inv_measurement_cov != 0]
+
+        self._odometry_rotation_std = 0.05
+        self._odometry_translation_std = 0.02
+
+        self.odometry_cov = np.array([[self._odometry_rotation_std**2, 0, 0],
+                                        [0, self._odometry_translation_std**2, 0],
+                                        [0, 0, self._odometry_rotation_std**2]])
+        
+        # ditto for the odometry cov
+        self.sqrt_inv_odometry_cov = np.sqrt(self.odometry_cov)
+        self.sqrt_inv_odometry_cov[self.sqrt_inv_odometry_cov != 0] = 1/self.sqrt_inv_odometry_cov[self.sqrt_inv_odometry_cov != 0]
+
+
     def add_measurement(self, z: NDArray, H: Callable, J: Callable) -> None:
         """
         Adds a measurement to the factor graph.
@@ -80,8 +103,8 @@ class FactorGraphManager:
         b = np.zeros((self.dim_state*self.poseID + self.dim_state + 2*self.num_measurements, 1))
 
         # Set the prior
-        A[:self.dim_state,:self.dim_state] = -np.eye(self.dim_state)
-        b[:self.dim_state] = x[:self.dim_state]
+        A[:self.dim_state,:self.dim_state] = self.sqrt_inv_odometry_cov @ (-np.eye(self.dim_state))
+        b[:self.dim_state] = self.sqrt_inv_measurement_cov @ x[:self.dim_state]
 
         for odometry_data in self.odometry_info:
             poseID, u, F, G = odometry_data
@@ -91,9 +114,9 @@ class FactorGraphManager:
             next = current + self.dim_state
             F_evaluated = F(x[previous:current], u).reshape(self.dim_state, self.dim_state)
             G_evaluated = G(x[current:next])
-            b[current:next] = u  # TODO: we have to pre-multiply by inverse transpose sqrt of process noise
-            A[current:next, previous:current] = F_evaluated # TODO: we have to pre-multiply by inverse transpose sqrt of process noise
-            A[current:next, current:next] = G_evaluated # TODO: we have to pre-multiply by inverse transpose sqrt of process noise
+            b[current:next] = self.sqrt_inv_odometry_cov @ u  
+            A[current:next, previous:current] = self.sqrt_inv_odometry_cov @ F_evaluated 
+            A[current:next, current:next] = self.sqrt_inv_odometry_cov @ G_evaluated 
 
         for sensor_data in self.sensor_info:
             landmarkID, measured_poseID, measurementID, H, J, z = sensor_data
@@ -106,9 +129,9 @@ class FactorGraphManager:
             measurement_next = measurement_current + 2
             H_evaluated = H(x[pose_current:pose_next], x[landmark_current:landmark_next]).reshape(2, 3)
             J_evaluated = J(x[pose_current:pose_next], x[landmark_current:landmark_next]).reshape(len(z), len(z))
-            b[measurement_current:measurement_next] = z # TODO: we have to pre-multiply by inverse transpose sqrt of measurement noise
-            A[measurement_current:measurement_next, pose_current:pose_next] = H_evaluated # TODO: we have to pre-multiply by inverse transpose sqrt of measurement noise
-            A[measurement_current:measurement_next, landmark_current:landmark_next] = J_evaluated # TODO: we have to pre-multiply by inverse transpose sqrt of measurement noise
+            b[measurement_current:measurement_next] = self.sqrt_inv_measurement_cov @ z 
+            A[measurement_current:measurement_next, pose_current:pose_next] = self.sqrt_inv_measurement_cov @ H_evaluated 
+            A[measurement_current:measurement_next, landmark_current:landmark_next] = self.sqrt_inv_measurement_cov @ J_evaluated 
 
         return A, b
 
