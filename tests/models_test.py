@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from src.models import motion_model, inverse_motion_model, sensor_model, _wrap_within_pi
+from src.models import motion_model, inverse_motion_model, sensor_model, inverse_sensor_model, _wrap_within_pi
 
 
 def test_motion_model():
@@ -52,6 +52,30 @@ def test_sensor_model():
     # 90 degrees right of the robot
     landmark = np.array([[2, 0]], float).T
     assert np.allclose(sensor_model(x, landmark), np.array([[np.sqrt(2), -np.pi/2]]).T)
+
+
+def test_inverse_sensor_model():
+    x = np.array([[1, 1, np.pi/4]], float).T
+
+    # In front of the robot
+    landmark = np.array([[3, 3]], float).T
+    measurement = sensor_model(x, landmark)
+    assert np.allclose(landmark, inverse_sensor_model(x, measurement))
+
+    # 45 degrees to the left of the robot
+    landmark = np.array([[1, 3]], float).T
+    measurement = sensor_model(x, landmark)
+    assert np.allclose(landmark, inverse_sensor_model(x, measurement))
+
+    # Behind the robot
+    landmark = np.array ([[-1, -1]], float).T
+    measurement = sensor_model(x, landmark)
+    assert np.allclose(landmark, inverse_sensor_model(x, measurement))
+
+    # 90 degrees right of the robot
+    landmark = np.array([[2, 0]], float).T
+    measurement = sensor_model(x, landmark)
+    assert np.allclose(landmark, inverse_sensor_model(x, measurement))
 
 
 def test_wrap_within_pi():
