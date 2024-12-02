@@ -112,7 +112,7 @@ class Simulator:
         measurements = []
         for i in range(self._landmarks.shape[1]):
             landmark = self._landmarks[:, i].reshape(-1, 1)
-            measurement = self._sensor_model(next_state, landmark)
+            measurement = np.array(self._sensor_model(next_state, landmark))
 
             # Landmark visible, add to measurements
             if measurement[0] <= self._max_range and np.abs(measurement[1]) <= self._max_bearing:

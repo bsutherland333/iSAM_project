@@ -7,7 +7,7 @@ class FactorGraphManager:
     """
     Class to construct the A matrix from a set of given odometry and sensor measurements.
     """
-    def __init__(self, initial_state: NDArray, dim_state: int) -> None:
+    def __init__(self, dim_state: int) -> None:
         """
         Initialize the FactorGraphManager.
 
@@ -18,9 +18,7 @@ class FactorGraphManager:
             landmark ID, output should be z.
         """
 
-        self.x = initial_state
         self.dim_state = dim_state
-        self.prev_A_width = initial_state.shape[0]
         self.landmarkIDs = []
         self.num_landmarks = 0
         self.num_measurements = 0
@@ -75,7 +73,6 @@ class FactorGraphManager:
         Returns:
         The A matrix and its associated b vector.
         """
-        # assert x.shape == (self.prev_A_width, 1)
         assert x.dtype == np.float64
         
         
@@ -84,8 +81,7 @@ class FactorGraphManager:
 
         # Set the prior
         A[:self.dim_state,:self.dim_state] = -np.eye(self.dim_state)
-        b[:self.dim_state] = self.x
-
+        b[:self.dim_state] = x[:self.dim_state]
 
         for odometry_data in self.odometry_info:
             poseID, u, F, G = odometry_data
@@ -108,13 +104,11 @@ class FactorGraphManager:
             landmark_next = landmark_current + 2
             measurement_current = (1+self.poseID)*self.dim_state + 2*measurementID
             measurement_next = measurement_current + 2
-            print(pose_current, pose_next, landmark_current, landmark_next)
             H_evaluated = H(x[pose_current:pose_next], x[landmark_current:landmark_next]).reshape(2, 3)
             J_evaluated = J(x[pose_current:pose_next], x[landmark_current:landmark_next]).reshape(len(z), len(z))
             b[measurement_current:measurement_next] = z # TODO: we have to pre-multiply by inverse transpose sqrt of measurement noise
             A[measurement_current:measurement_next, pose_current:pose_next] = H_evaluated # TODO: we have to pre-multiply by inverse transpose sqrt of measurement noise
             A[measurement_current:measurement_next, landmark_current:landmark_next] = J_evaluated # TODO: we have to pre-multiply by inverse transpose sqrt of measurement noise
-
 
         return A, b
 

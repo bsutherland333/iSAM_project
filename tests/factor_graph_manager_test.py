@@ -41,8 +41,7 @@ def test_G_jacobian():
     assert np.allclose(G_eval, G_expected)
 
 def test_factor_graph_manager():
-    initial_state = jnp.array([0,0,0]).reshape(3,1)
-    factor_graph_manager = fgm.FactorGraphManager(initial_state, 3)
+    factor_graph_manager = fgm.FactorGraphManager(3)
     F, H, J, G = make_F_H_J_G(motion_model, sensor_model)
 
     measurement1 = jnp.array([2,np.pi/4,0]).reshape(3,1)
@@ -53,7 +52,7 @@ def test_factor_graph_manager():
 
     measurement2 = jnp.array([1, np.pi,0]).reshape(3,1)
     factor_graph_manager.add_measurement(measurement2, H, J)
-    x = jnp.array([0,0,0,1.,0.,0.,1.5,-1]).reshape(8,1)
+    x = jnp.array([0.,0.,0.,1.,0.,0.,1.5,-1]).reshape(-1,1)
     A, b = factor_graph_manager.get_A_b_matrix(x)
 
     b_expected = np.array([0., 0., 0., 0, 1., 0, 2, np.pi/4, 1, np.pi]).reshape(-1,1)
