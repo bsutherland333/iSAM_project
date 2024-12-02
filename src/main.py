@@ -18,6 +18,10 @@ from solvers import scipy_solver as solver
 
 
 def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, num_iters_before_batch: int, plot_live: bool):
+    range_measurement_std = 0.1
+    bearing_measurement_std = 0.05
+    odom_translation_std = 0.05
+    odom_rotation_std = 0.02
     if data_filepath != '':
         data = DataParser(data_filepath)
         x = data.get_initial_state()
@@ -25,10 +29,25 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
     else:
         x = np.array([0.5, 0.5, 0], float).reshape(-1,1)
         true_landmark_positions = np.array([[0, 0], [3, 0], [6, 0], [0, 3], [3, 3], [6, 3]], float).T
-        data = Simulator(inverse_motion_model, sensor_model, np_seed=0, initial_state=x, landmark_locations=true_landmark_positions)
+        data = Simulator(inverse_motion_model,
+                         sensor_model,
+                         np_seed=0,
+                         initial_state=x,
+                         landmark_locations=true_landmark_positions,
+                         range_measurement_std=range_measurement_std,
+                         bearing_measurement_std=bearing_measurement_std,
+                         odometry_translation_std=odom_translation_std,
+                         odometry_rotation_std=odom_rotation_std)
 
     F, H, J, G = make_F_H_J_G(motion_model, sensor_model)
-    factor_graph_manager = FactorGraphManager(inverse_motion_model, sensor_model, x)
+    factor_graph_manager = FactorGraphManager(inverse_motion_model,
+                                              sensor_model,
+                                              x,
+                                              range_measurement_std,
+                                              bearing_measurement_std,
+                                              odom_rotation_std,
+                                              odom_translation_std,
+                                              )
 
     x_truth_hist = [x]
     measurement_hist = []

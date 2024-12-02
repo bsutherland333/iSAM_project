@@ -10,7 +10,12 @@ class FactorGraphManager:
     def __init__(self,
                  inverse_odometry_model: Callable,
                  sensor_model: Callable,
-                 initial_state: NDArray) -> None:
+                 initial_state: NDArray,
+                 measurement_range_std: float,
+                 measurement_bearing_std: float,
+                 odometry_rotational_std: float,
+                 odometry_translational_std: float,
+                 ) -> None:
         """
         Initialize the FactorGraphManager.
 
@@ -19,6 +24,11 @@ class FactorGraphManager:
             should be x0 and x1, output should be u.
         sensor_model: Callable function of the sensor model we are using. Input should be x and
             landmark ID, output should be z.
+        initial_state: (3x1) Numpy array of the initial_state of the robot. [[x, y, theta]].T
+        measurement_range_std: Standard deviation of the range measurement.
+        measurement_bearing_std: Standard deviation of the bearing measurement.
+        odometry_rotational_std: Standard deviation of the rotational odometry measurements.
+        odometry_translational_std: Standard deviation of the translational odometry measurement.
         """
         assert initial_state.shape == (3, 1)
         assert initial_state.dtype == np.float64
@@ -34,28 +44,12 @@ class FactorGraphManager:
         self.odometry_info = []
         self.sensor_info = []
 
-        # These match the values in simulator.py
-        self._range_std = 0.1
-        self._bearing_std = 0.1
+        self.sqrt_inv_measurement_cov = np.array([[1/measurement_range_std, 0],
+                                                  [0, 1/measurement_bearing_std]])
 
-        self.measurement_cov = np.array([[self._range_std**2, 0],
-                                         [0, self._bearing_std**2]])
-        
-        # since diagonal we can just make the sqrt of the inverse be the sqrt of the diagonal
-        self.sqrt_inv_measurement_cov = np.sqrt(self.measurement_cov)
-        self.sqrt_inv_measurement_cov[self.sqrt_inv_measurement_cov != 0] = 1/self.sqrt_inv_measurement_cov[self.sqrt_inv_measurement_cov != 0]
-
-        self._odometry_rotation_std = 0.05
-        self._odometry_translation_std = 0.02
-
-        self.odometry_cov = np.array([[self._odometry_rotation_std**2, 0, 0],
-                                        [0, self._odometry_translation_std**2, 0],
-                                        [0, 0, self._odometry_rotation_std**2]])
-        
-        # ditto for the odometry cov
-        self.sqrt_inv_odometry_cov = np.sqrt(self.odometry_cov)
-        self.sqrt_inv_odometry_cov[self.sqrt_inv_odometry_cov != 0] = 1/self.sqrt_inv_odometry_cov[self.sqrt_inv_odometry_cov != 0]
-
+        self.sqrt_inv_odometry_cov = np.array([[1/odometry_translational_std, 0, 0],
+                                               [0, 1/odometry_translational_std, 0],
+                                               [0, 0, 1/odometry_rotational_std]])
 
     def add_measurement(self, z: NDArray, H: Callable, J: Callable) -> None:
         """
@@ -115,7 +109,7 @@ class FactorGraphManager:
 
         # Set the prior
         A[:self.dim_state,:self.dim_state] = -np.eye(self.dim_state) * 1000  # Make the prior very confident
-        b[:self.dim_state] = self.sqrt_inv_measurement_cov @ (x[:self.dim_state] - self.initial_state)
+        b[:self.dim_state] = (x[:self.dim_state] - self.initial_state) * 1000
 
         for odometry_data in self.odometry_info:
             poseID, u, F, G = odometry_data
