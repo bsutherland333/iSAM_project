@@ -64,6 +64,10 @@ def plot_factor_graph(estimated_robot_poses=None,
     assert measurement_associations is None or measurement_associations.ndim == 2
     assert measurement_associations is None or measurement_associations.shape[0] == 2
     assert measurement_associations is None or measurement_associations.dtype == np.int64
+    assert measurement_associations is None or estimated_robot_poses is None or \
+        np.max(measurement_associations[0, :]) == estimated_robot_poses.shape[1] - 1
+    assert measurement_associations is None or estimated_landmark_positions is None or \
+        np.max(measurement_associations[1, :]) == estimated_landmark_positions.shape[1] - 1
 
     assert pause_duration >= 0
 

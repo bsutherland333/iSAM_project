@@ -55,11 +55,11 @@ class Simulator:
         # Passed parameters
         self._inverse_motion_model = inverse_motion_model
         self._sensor_model = sensor_model
-        self._initial_state = initial_state
+        self._initial_state = initial_state.copy()
         self._prev_x = np.zeros((3, 1), float)
         self._motion_type = motion_type
         self._motion_size = motion_size
-        self._landmarks = landmark_locations
+        self._landmarks = landmark_locations.copy()
         self._dt = dt
         np.random.seed(np_seed)
 

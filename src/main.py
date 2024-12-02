@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-import matplotlib.pyplot as plt
 import argparse
 import numpy as np
 
@@ -19,18 +18,19 @@ from solvers import scipy_solver as solver
 
 
 def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, num_iters_before_batch: int, plot_live: bool):
-    x = np.array([1,0,0.]).reshape(-1,1)
     if data_filepath != '':
         data = DataParser(data_filepath)
         x = data.get_initial_state()
+        true_landmark_positions = data.get_landmark_positions()
     else:
-        data = Simulator(inverse_motion_model, sensor_model, np_seed=0, initial_state=x)
-        # x = data._initial_state
+        x = np.array([0.5, 0.5, 0], float).reshape(-1,1)
+        true_landmark_positions = np.array([[0, 0], [3, 0], [6, 0], [0, 3], [3, 3], [6, 3]], float).T
+        data = Simulator(inverse_motion_model, sensor_model, np_seed=0, initial_state=x, landmark_locations=true_landmark_positions)
 
     F, H, J, G = make_F_H_J_G(motion_model, sensor_model)
     factor_graph_manager = FactorGraphManager(3)
 
-    x_truth_hist = []
+    x_truth_hist = [x]
     measurement_hist = []
     pose_hist = [x]
     landmark_hist = []
@@ -39,8 +39,7 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
         # Run the simulator/data parser
         u, z, x_truth = data.get_next_timestep()
         x_truth_hist.append(x_truth)
-        for i in range(z.shape[1]):
-            measurement_hist.append(np.array([timestep + 1, z[2,i]], int).reshape(-1,1))
+        measurement_hist.extend([np.array([timestep + 1, z[2, i]], int).reshape(-1,1) for i in range(z.shape[1])])
 
         # Add the measurements to the factor graph
         # Also append states to the state histories
@@ -53,9 +52,9 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
             factor_graph_manager.add_measurement(current_measurement, H, J)
 
             if z[2,i] not in landmark_id_hist:
-                landmark_guess = list(inverse_sensor_model(current_state, current_measurement[:2]))
+                landmark_guess = inverse_sensor_model(current_state, current_measurement[:2])
                 landmark_hist.append(landmark_guess)
-                landmark_id_hist.append(z[2,i])
+                landmark_id_hist.append(z[2, i])
 
         if not use_iterative_solver or timestep % num_iters_before_batch == 0:
             # Solve the linear system with a batch update
@@ -74,24 +73,13 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
             x += P @ x_prime
 
         if plot_live or timestep == num_iterations - 1:
-            # TODO: Untested reformatting/plotting code, make sure data looks correct before
-            # attempting to plot
-            if data_filepath == '':
-                # true_landmark_positions = data._landmarks.copy()
-                # true_landmark_positions = data._R_sim_truth @ true_landmark_positions
-                # true_landmark_positions += data._initial_state[0:2].flatten()
-                pass
-            else:
-                true_landmark_positions = None
-
-            plot_factor_graph(estimated_robot_poses=x[:(timestep + 1)*3].reshape(3, -1),
+            plot_factor_graph(estimated_robot_poses=x[:len(pose_hist)*3].reshape(-1, 3).T,
                               true_robot_poses=np.hstack(x_truth_hist),
-                              estimated_landmark_positions=x[len(pose_hist)*3:].reshape(2, -1),
-                              # true_landmark_positions=true_landmark_positions,
-                              # measurement_associations=np.array(measurement_hist, int).T,
+                              estimated_landmark_positions=x[len(pose_hist)*3:].reshape(-1, 2).T,
+                              true_landmark_positions=true_landmark_positions,
+                              measurement_associations=np.hstack(measurement_hist),
                               hold_on=True if timestep == num_iterations - 1 else False
                               )
-            plt.waitforbuttonpress()
 
         print(f"timestep: {timestep}")
 

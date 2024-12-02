@@ -21,6 +21,16 @@ class DataParser:
         """
         return np.array([0, 0, 0], dtype=float).reshape(3, 1)
 
+    def get_landmark_positions(self):
+        """
+        Returns the true landmark positions.
+
+        Returns:
+        Numpy array of the true landmark positions. Is a 2xN float array where each landmark is a
+            column in the array, [[x, y], ...].T.
+        """
+        return np.array([[0, 0], [3, 0], [6, 0], [0, 3], [3, 3], [6, 3]], dtype=float).T
+
     def get_next_timestep(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Gets the odometry and sensor measurements for the next timestep.
