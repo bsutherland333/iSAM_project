@@ -12,10 +12,11 @@ from jax_jacobians import make_F_H_J_G
 
 # Change what is imported to change the methods
 from column_reorderers import colamd as reorder
-from iterative_matrix_augmenters import update_meaurement as augment_r_measurement
+from iterative_matrix_augmenters import update_measurement as augment_r_measurement
 from iterative_matrix_augmenters import update_variable as augment_r_variable
 from qr_factorizers import np_qr as qr
 from solvers import scipy_solver as solver
+from solvers import iterative_linear_least_squares as non_linear_solve
 
 
 def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, num_iters_before_batch: int, plot_live: bool):
@@ -52,9 +53,10 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
 
     x_truth_hist = [x]
     measurement_hist = []
-    pose_hist = [x]
-    landmark_hist = []
+    pose_hist = x.copy()
+    landmark_hist = np.array([[]]).T
     landmark_id_hist = []
+    R = None
     for timestep in range(num_iterations):
         # Run the simulator/data parser
         u, z, x_truth = data.get_next_timestep()
@@ -63,54 +65,75 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
 
         # Add the measurements to the factor graph
         # Also append states to the state histories
-        current_state = np.array(pose_hist[-1]).reshape(-1,1)
+        previous_state = pose_hist[-3:]
         factor_graph_manager.add_odometry(u, F, G)
-        pose_hist.append(motion_model(current_state, u))
+        pose_hist = np.vstack((pose_hist, motion_model(previous_state, u)))
 
+        current_state = pose_hist[-3:]
         for i in range(z.shape[1]):
             current_measurement = z[:, i].reshape(-1, 1)
-            current_state = np.array(pose_hist[-1]).reshape(-1,1)
             factor_graph_manager.add_measurement(current_measurement, H, J)
 
             if z[2,i] not in landmark_id_hist:
                 landmark_guess = inverse_sensor_model(current_state, current_measurement[:2])
-                landmark_hist.append(landmark_guess)
+                landmark_hist = np.vstack((landmark_hist, landmark_guess))
                 landmark_id_hist.append(z[2, i].astype(int))
 
+        # Stack the x vector for solving 
+        x = np.vstack((pose_hist, landmark_hist))
         if not use_iterative_solver or timestep % num_iters_before_batch == 0:
             # Solve the linear system with a batch update
-            x = np.vstack((pose_hist + landmark_hist))
-            A, b = factor_graph_manager.get_A_b_matrix(x)
-            A_prime, P = reorder(A)
 
-            # Compute full QR factorization and the d vector
-            Q, R = qr(A_prime)
-            d = Q.T @ b
-
-            x_prime = solver(R, d)
-            x += P @ x_prime
+            # Use a non linear solver to compute solution
+            x, R, d = non_linear_solve(x,
+                                       factor_graph_manager.get_A_b_matrix,
+                                       reorder)
         else:
-            # Update the factorization iteratively
+            # Update the factorization iteratively and solve
+
+            # First update with the odometry
+            # ASSUMPTION: We receive exactly 1 odometry measurment every timestep (i.e. we add 1 new pose variable)
+            sqrt_odom_cov = factor_graph_manager.sqrt_inv_odometry_cov
+            gamma = sqrt_odom_cov @ (u - inverse_motion_model(previous_state, current_state))
+            F_evaluated = F(previous_state, u).reshape(3, 3)
+            G_evaluated = G(current_state)
+            w_T = np.zeros((F_evaluated.shape[0], R.shape[1]))
+            w_T[:,-F_evaluated.shape[1]:] = sqrt_odom_cov @ F_evaluated
+            w_T = np.hstack((w_T, sqrt_odom_cov @ G_evaluated))
+            R, d = augment_r_variable(3, w_T, gamma, R, d)
+            
             for i in range(z.shape[1]):
-                w_T = None          # TODO: We need to add the row (the same row that got added to A) to R
-                gamma = z[:,i].reshape((-1,1))
+                break
+                current_measurement = z[:, i].reshape(-1, 1)
+                landmark_guess = inverse_sensor_model(current_state, current_measurement[:2])
 
-                # TODO: Based on the data association, we need to either call augment_r_measurement (landmark already
-                # in state) or augment_r_variable (new variable)
-                if True: # Measurement already in state 
-                    # TODO: Perhaps we add a flag in the factor graph manager that tells us when a new variable is added?
-                    R, d = augment_r_measurement(w_T, gamma, R, d)
-                else:   # Measurement not in state
-                    variable_dim = 2    # TODO: We need to figure out how many rows/cols to add to R. If new landmark, just dimension of landmark states.
-                    R, d = augment_r_variable(variable_dim, w_T, R, d)
+                sqrt_meas_cov = factor_graph_manager.sqrt_inv_measurement_cov
+                gamma = sqrt_meas_cov @ (z[:2] - self.sensor_model(current_state, landmark_guess))
 
+                # TODO: Finish this...
+                #if z[2,i] not in landmark_id_hist:
+                #    H_evaluated = H(x[pose_current:pose_next], x[landmark_current:landmark_next]).reshape(2, 3)
+                #    J_evaluated = J(x[pose_current:pose_next], x[landmark_current:landmark_next]).reshape(len(z), len(z))
+                #    w_T = np.zeros(())
+                #    w_T[] = sqrt_meas_cov @ H_evaluated
+                #    w_T = np.hstack((w_T, sqrt_meas_cov @ J_evaluated))
+
+                #    R, d = augment_r_variable(2, w_T, gamma, R, d)
+                #else:
+
+                #    R, d = augment_r_measurement(w_T, gamma, R, d)
+                
             x_delta_prime = solver(R, d)
-            x += P @ x_delta_prime
+            #x += x_delta_prime
+
+        # Unpack the x vector into the pose_hist and landmark_hist arrays
+        pose_hist = x[:len(pose_hist)]
+        landmark_hist = x[len(pose_hist):]
 
         if plot_live or timestep == num_iterations - 1:
-            plot_factor_graph(estimated_robot_poses=x[:len(pose_hist)*3].reshape(-1, 3).T,
+            plot_factor_graph(estimated_robot_poses=pose_hist.reshape(-1, 3).T,
                               true_robot_poses=np.hstack(x_truth_hist),
-                              estimated_landmark_positions=x[len(pose_hist)*3:].reshape(-1, 2).T,
+                              estimated_landmark_positions=landmark_hist.reshape(-1, 2).T,
                               true_landmark_positions=true_landmark_positions,
                               #measurement_associations=np.hstack(measurement_hist),
                               hold_on=True if timestep == num_iterations - 1 else False
