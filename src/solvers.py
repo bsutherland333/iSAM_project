@@ -66,10 +66,12 @@ def iterative_linear_least_squares(x: NDArray, get_A_b: Callable, reorder: Calla
     assert x.dtype == np.float64
     assert x.shape[1] == 1
 
-    threshold = 0.5
+    threshold = 1.0
+    solved_once = False
     prev_x = np.zeros(x.shape)
 
-    while np.linalg.norm(x - prev_x) > threshold:
+    while np.linalg.norm(x - prev_x) > threshold or not solved_once:
+        solved_once = True
         prev_x = x.copy()
 
         A, b = get_A_b(x)
