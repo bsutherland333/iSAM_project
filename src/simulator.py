@@ -20,6 +20,7 @@ class Simulator:
     def __init__(self,
                  inverse_motion_model: Callable,
                  sensor_model: Callable,
+
                  initial_state:NDArray = np.array([[0.5, 0.5, 0]], float).reshape(-1, 1),
                  motion_type:MotionGeometryType = MotionGeometryType.RECTANGLE,
                  motion_size:Tuple[float, float] = (5.0, 2.0),
@@ -29,6 +30,13 @@ class Simulator:
                  ).T,
                  dt:float = 1.0,
                  np_seed:int = 0,
+
+                 max_measurement_range:float = 5.0,
+                 range_measurement_std:float = 0.1,
+                 max_measurement_bearing:float = np.pi/2,
+                 bearing_measurement_std:float = 0.05,
+                 odometry_translation_std:float = 0.02,
+                 odometry_rotation_std:float = 0.05,
                  ):
         """
         Initializes the simulator.
@@ -38,12 +46,22 @@ class Simulator:
             state and the next state and return the odometry.
         sensor_model: The sensor model of the robot. Should take in the current state and the
             location of a landmark and return the measurement.
+
         initial_state: The initial state of the robot. A 3x1 float numpy array [[x, y, theta]].T.
             Units are in meters and radians.
         motion_type: The type of motion geometry to use. Currently only rectangle is supported.
         dt: The size of the time step for the simulator, in seconds.
         landmark_locations: The locations of the landmarks in the world, in meters.
         np_seed: The seed to use for the numpy random number generator. Helps with consistency.
+
+        max_measurement_range: The maximum range of the sensor, in meters.
+        range_measurement_std: The standard deviation of the range measurement, in meters.
+        max_measurement_bearing: The maximum bearing of the sensor, in radians.
+        bearing_measurement_std: The standard deviation of the bearing measurement, in radians.
+        odomtery_translation_std: The standard deviation of the translational odometry measurement,
+            in meters.
+        odometry_rotation_std: The standard deviation of the rotational odometry measurements, in
+            radians.
         """
         assert initial_state is None or initial_state.shape == (3, 1)
         assert initial_state is None or initial_state.dtype == np.float64
@@ -55,11 +73,11 @@ class Simulator:
         # Passed parameters
         self._inverse_motion_model = inverse_motion_model
         self._sensor_model = sensor_model
-        self._initial_state = initial_state
+        self._initial_state = initial_state.copy()
         self._prev_x = np.zeros((3, 1), float)
         self._motion_type = motion_type
         self._motion_size = motion_size
-        self._landmarks = landmark_locations
+        self._landmarks = landmark_locations.copy()
         self._dt = dt
         np.random.seed(np_seed)
 
@@ -75,17 +93,17 @@ class Simulator:
         self._landmarks = self._R_sim_truth.T @ self._landmarks
 
         # Sensor parameters
-        self._max_range = 5.0
-        self._range_std = 0.1
+        self._max_range = max_measurement_range
+        self._range_std = range_measurement_std
         self._range_bias = 0.0
-        self._max_bearing = np.pi/2
-        self._bearing_std = 0.1
+        self._max_bearing = max_measurement_bearing
+        self._bearing_std = bearing_measurement_std
         self._bearing_bias = 0.0
 
         # Odometry parameters
-        self._odometry_rotation_std = 0.05
+        self._odometry_rotation_std = odometry_rotation_std
         self._odometry_rotation_bias = 0.0
-        self._odometry_translation_std = 0.02
+        self._odometry_translation_std = odometry_translation_std
         self._odometry_translation_bias = 0.0
 
     def get_next_timestep(self) -> Tuple[NDArray, NDArray, NDArray]:
@@ -112,7 +130,7 @@ class Simulator:
         measurements = []
         for i in range(self._landmarks.shape[1]):
             landmark = self._landmarks[:, i].reshape(-1, 1)
-            measurement = self._sensor_model(next_state, landmark)
+            measurement = np.array(self._sensor_model(next_state, landmark))
 
             # Landmark visible, add to measurements
             if measurement[0] <= self._max_range and np.abs(measurement[1]) <= self._max_bearing:

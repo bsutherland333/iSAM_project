@@ -1,7 +1,9 @@
 import numpy as np
+import jax.numpy as jnp
+from jax import jit
 from numpy.typing import NDArray
 
-
+@jit
 def motion_model(x: NDArray, u: NDArray) -> NDArray:
     """
     Motion model for our system. Uses basic "rotate, move, rotate" model from chapter 5.4 of
@@ -21,13 +23,13 @@ def motion_model(x: NDArray, u: NDArray) -> NDArray:
 
     motion_heading = x[2] + u[0]
 
-    x_next = x[0] + u[1] * np.cos(motion_heading)
-    y_next = x[1] + u[1] * np.sin(motion_heading)
+    x_next = x[0] + u[1] * jnp.cos(motion_heading)
+    y_next = x[1] + u[1] * jnp.sin(motion_heading)
     heading_next = motion_heading + u[2]
 
     heading_next = _wrap_within_pi(heading_next)
 
-    return np.array([x_next, y_next, heading_next], dtype=float).reshape(3, 1)
+    return jnp.array([x_next, y_next, heading_next], dtype=float).reshape(3, 1)
 
 
 def inverse_motion_model(x: NDArray, x_next: NDArray) -> NDArray:
@@ -80,12 +82,39 @@ def sensor_model(x: NDArray, landmark: NDArray) -> NDArray:
     del_x = landmark[0] - x[0]
     del_y = landmark[1] - x[1]
 
-    range = np.sqrt(del_x**2 + del_y**2)
-    bearing = np.arctan2(del_y, del_x) - x[2]
+    range = jnp.sqrt(del_x**2 + del_y**2)
+    bearing = jnp.arctan2(del_y, del_x) - x[2]
 
     bearing = _wrap_within_pi(bearing)
 
-    return np.array([range, bearing], dtype=float).reshape(2, 1)
+    return jnp.array([range, bearing], dtype=float).reshape(2, 1)
+
+
+def inverse_sensor_model(x: NDArray, z: NDArray) -> NDArray:
+    """
+    Inverse sensor model for our system. Like the sensor model, but instead of getting the expected
+    measurement given the current state and landmark, we get the landmark position given
+    the current state and measurement.
+
+    Parameters:
+    x: The current state of the system. A 3x1 float numpy array [[x, y, theta]].T.
+    z: The measurement to the landmark. A 2x1 float numpy array [[range, bearing]].T.
+
+    Returns:
+    The estimated position of the landmark. A 2x1 float numpy array [[x, y]].T.
+    """
+    assert x.shape == (3, 1)
+    assert x.dtype == np.float64
+    assert z.shape == (2, 1)
+    assert z.dtype == np.float64
+
+    range = z[0]
+    bearing = z[1]
+
+    x_landmark = x[0] + range * np.cos(x[2] + bearing)
+    y_landmark = x[1] + range * np.sin(x[2] + bearing)
+
+    return np.array([x_landmark, y_landmark], dtype=float).reshape(2, 1)
 
 
 def _wrap_within_pi(val: float) -> float:
