@@ -18,6 +18,8 @@ from qr_factorizers import np_qr as qr
 from solvers import scipy_solver as solver
 from solvers import iterative_linear_least_squares as non_linear_solve
 
+# Set numpy to not wrap arrays
+np.set_printoptions(linewidth=np.inf)
 
 def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, num_iters_before_batch: int, plot_live: bool):
     range_measurement_std = 0.1
@@ -41,7 +43,7 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
                          odometry_translation_std=odom_translation_std,
                          odometry_rotation_std=odom_rotation_std)
 
-    F, H, J, G = make_F_H_J_G(motion_model, sensor_model)
+    F, H, J, G = make_F_H_J_G(inverse_motion_model, sensor_model)
     factor_graph_manager = FactorGraphManager(inverse_motion_model,
                                               sensor_model,
                                               x,

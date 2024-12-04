@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from jax import jit
 from numpy.typing import NDArray
 
-@jit
+
 def motion_model(x: NDArray, u: NDArray) -> NDArray:
     """
     Motion model for our system. Uses basic "rotate, move, rotate" model from chapter 5.4 of
@@ -29,10 +29,11 @@ def motion_model(x: NDArray, u: NDArray) -> NDArray:
 
     heading_next = _wrap_within_pi(heading_next)
 
-    return jnp.array([x_next, y_next, heading_next], dtype=float).reshape(3, 1)
+    return np.array([x_next, y_next, heading_next], dtype=float).reshape(3, 1)
 
 
-def inverse_motion_model(x: NDArray, x_next: NDArray) -> NDArray:
+@jit
+def inverse_motion_model(x: NDArray, x_next: NDArray):
     """
     Inverse motion model of our system. Like the motion model, but instead of getting the next
     state given the current and control input, we get the control input given the current and next
@@ -53,17 +54,17 @@ def inverse_motion_model(x: NDArray, x_next: NDArray) -> NDArray:
     del_x = x_next[0] - x[0]
     del_y = x_next[1] - x[1]
 
-    dist = np.sqrt(del_x**2 + del_y**2)
-    rot1 = np.arctan2(del_y, del_x) - x[2]
+    dist = jnp.sqrt(del_x**2 + del_y**2)
+    rot1 = jnp.arctan2(del_y, del_x) - x[2]
     rot2 = x_next[2] - x[2] - rot1
 
     rot1 = _wrap_within_pi(rot1)
     rot2 = _wrap_within_pi(rot2)
 
-    return np.array([rot1, dist, rot2], dtype=float).reshape(3, 1)
+    return jnp.array([rot1, dist, rot2], dtype=float).reshape(3, 1)
 
 
-def sensor_model(x: NDArray, landmark: NDArray) -> NDArray:
+def sensor_model(x: NDArray, landmark: NDArray):
     """
     Sensor model for our system. Uses a basic range and bearing model.
 

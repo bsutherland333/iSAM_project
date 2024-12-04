@@ -145,7 +145,7 @@ class Simulator:
         measurements = np.hstack(measurements)
 
         # Get the odometry reading
-        odometry = self._inverse_motion_model(self._prev_x, next_state)
+        odometry = np.array(self._inverse_motion_model(self._prev_x, next_state))
         self._prev_x = next_state
         odometry[0] += np.random.normal(self._odometry_rotation_bias, self._odometry_rotation_std)
         odometry[1] += np.random.normal(self._odometry_translation_bias, self._odometry_translation_std)

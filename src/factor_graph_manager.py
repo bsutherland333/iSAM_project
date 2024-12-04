@@ -118,8 +118,8 @@ class FactorGraphManager:
             previous = current - self.dim_state
             next = current + self.dim_state
             F_evaluated = F(x[previous:current], u).reshape(self.dim_state, self.dim_state)
-            G_evaluated = G(x[current:next])
-            b[current:next] = self.sqrt_inv_odometry_cov @ (u - self.inverse_odometry_model(x[previous:current], x[current:next]))
+            G_evaluated = G(x[previous:current], x[current:next]).reshape(self.dim_state, self.dim_state)
+            b[current:next] = self.sqrt_inv_odometry_cov @ (u - np.array(self.inverse_odometry_model(x[previous:current], x[current:next])))
             A[current:next, previous:current] = self.sqrt_inv_odometry_cov @ F_evaluated
             A[current:next, current:next] = self.sqrt_inv_odometry_cov @ G_evaluated
 
