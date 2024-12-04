@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.sparse.linalg import splu
 from numpy.typing import NDArray
 from typing import Tuple
 
@@ -16,9 +17,10 @@ def colamd(A: NDArray) -> Tuple[NDArray, NDArray]:
     assert A.ndim == 2
     assert A.dtype == np.float64
 
-    P = np.eye(A.shape[1], dtype=int)
+    # P = np.eye(A.shape[1], dtype=int)
 
-    return A, P
+    p = splu(A.T @ A, permc_spec='COLAMD').perm_c
+    P = np.zeros((A.shape[1], A.shape[1]), dtype=int)
+    P[np.arange(np.shape(A)[1]), p] = 1
 
-
-# Place other methods here with same input/output
+    return A @ P, P
