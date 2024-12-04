@@ -16,7 +16,6 @@ from iterative_matrix_augmenters import update_measurement as augment_r_measurem
 from iterative_matrix_augmenters import update_variable as augment_r_variable
 from qr_factorizers import np_qr as qr
 from solvers import scipy_solver as solver
-from solvers import iterative_linear_least_squares as non_linear_solve
 
 # Set numpy to not wrap arrays
 np.set_printoptions(linewidth=np.inf)
@@ -85,11 +84,16 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
         x = np.vstack((pose_hist, landmark_hist))
         if not use_iterative_solver or timestep % num_iters_before_batch == 0:
             # Solve the linear system with a batch update
+            A, b = factor_graph_manager.get_A_b_matrix(x)
+            A_prime, P = reorder(A)
 
-            # Use a non linear solver to compute solution
-            x, R, d = non_linear_solve(x,
-                                       factor_graph_manager.get_A_b_matrix,
-                                       reorder)
+            # Factor A
+            Q, R = qr(A_prime)
+            d = Q.T @ b
+
+            x_prime = solver(R, d)
+            x += P @ x_prime
+
         else:
             # Update the factorization iteratively and solve
 
