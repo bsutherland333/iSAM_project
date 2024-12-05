@@ -29,7 +29,7 @@ def motion_model(x: NDArray, u: NDArray) -> NDArray:
 
     heading_next = _wrap_within_pi(heading_next)
 
-    return np.array([x_next, y_next, heading_next], dtype=float).reshape(3, 1)
+    return jnp.array([x_next, y_next, heading_next], dtype=float).reshape(3, 1)
 
 
 @jit

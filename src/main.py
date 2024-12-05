@@ -42,8 +42,8 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
                          odometry_translation_std=odom_translation_std,
                          odometry_rotation_std=odom_rotation_std)
 
-    F, H, J, G = make_F_H_J_G(inverse_motion_model, sensor_model)
-    factor_graph_manager = FactorGraphManager(inverse_motion_model,
+    F, H, J, G = make_F_H_J_G(motion_model, sensor_model)
+    factor_graph_manager = FactorGraphManager(motion_model,
                                               sensor_model,
                                               x,
                                               range_measurement_std,

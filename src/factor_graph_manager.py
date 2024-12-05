@@ -1,6 +1,7 @@
 import numpy as np
 from numpy.typing import NDArray
 from typing import Callable, Tuple
+from models import _wrap_within_pi
 
 
 class FactorGraphManager:
@@ -8,7 +9,7 @@ class FactorGraphManager:
     Class to construct the A matrix from a set of given odometry and sensor measurements.
     """
     def __init__(self,
-                 inverse_odometry_model: Callable,
+                 motion_model: Callable,
                  sensor_model: Callable,
                  initial_state: NDArray,
                  measurement_range_std: float,
@@ -33,7 +34,8 @@ class FactorGraphManager:
         assert initial_state.shape == (3, 1)
         assert initial_state.dtype == np.float64
 
-        self.inverse_odometry_model = inverse_odometry_model
+        
+        self.motion_model = motion_model
         self.sensor_model = sensor_model
         self.initial_state = initial_state.copy()
         self.dim_state = initial_state.shape[0]
@@ -108,8 +110,8 @@ class FactorGraphManager:
         b = np.zeros((self.dim_state*self.poseID + self.dim_state + 2*self.num_measurements, 1))
 
         # Set the prior
-        A[:self.dim_state,:self.dim_state] = -np.eye(self.dim_state) * 1000  # Make the prior very confident
-        b[:self.dim_state] = (x[:self.dim_state] - self.initial_state) * 1000
+        A[:self.dim_state,:self.dim_state] = -np.eye(self.dim_state) * 100  # Make the prior very confident
+        b[:self.dim_state] = (x[:self.dim_state] - self.initial_state) * 100
 
         for odometry_data in self.odometry_info:
             poseID, u, F, G = odometry_data
@@ -117,9 +119,11 @@ class FactorGraphManager:
             current = poseID*self.dim_state
             previous = current - self.dim_state
             next = current + self.dim_state
-            F_evaluated = F(x[previous:current], x[current:next]).reshape(self.dim_state, self.dim_state)
-            G_evaluated = G(x[previous:current], x[current:next]).reshape(self.dim_state, self.dim_state)
-            b[current:next] = self.sqrt_inv_odometry_cov @ (u - np.array(self.inverse_odometry_model(x[previous:current], x[current:next])))
+            F_evaluated = F(x[previous:current], u).reshape(self.dim_state, self.dim_state)
+            G_evaluated = G(x[current:next])
+            diff = np.array(x[current:next] - self.motion_model(x[previous:current], u))
+            diff[2] = _wrap_within_pi(diff[2])
+            b[current:next] = self.sqrt_inv_odometry_cov @ (diff)
             A[current:next, previous:current] = self.sqrt_inv_odometry_cov @ F_evaluated
             A[current:next, current:next] = self.sqrt_inv_odometry_cov @ G_evaluated
 
