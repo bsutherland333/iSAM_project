@@ -25,8 +25,8 @@ from models import _wrap_within_pi
 np.set_printoptions(linewidth=np.inf, suppress=True)
 
 def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, num_iters_before_batch: int, plot_live: bool):
-    range_measurement_std = 0.001
-    bearing_measurement_std = 0.001 # 10*np.pi/180
+    range_measurement_std = 0.1
+    bearing_measurement_std = 0.01 # 10*np.pi/180
     odom_translation_std = 0.005
     odom_rotation_std = 0.005
     dt = 0.5
@@ -99,6 +99,7 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
         # Get the next pose based on the odometry.
         # Use the current linearization point for incremental factorization, and the best linearization
         # point for batch updates.
+        # TODO: This x[last_odom_idx...] will break after a batch update with reordering (x is not in order immediately following)
         previous_state = pose_best_estimate[-3:].copy() if perform_batch_update else x[last_odom_idx:last_odom_idx+3].copy()
         current_state = motion_model(previous_state, u)
 
@@ -189,15 +190,6 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
                 w[:len_x_at_last_reorder,:] = P @ w[:len_x_at_last_reorder,:]
 
                 R, d = augment_r_measurement(w.T, gamma, R, d)
-
-        if plot_live or timestep == num_iterations - 1:
-            plot_factor_graph(estimated_robot_poses=pose_best_estimate.reshape(-1, 3).T,
-                              true_robot_poses=np.hstack(x_truth_hist),
-                              estimated_landmark_positions=landmark_best_estimate.reshape(-1, 2).T,
-                              true_landmark_positions=true_landmark_positions,
-                              #measurement_associations=np.hstack(measurement_hist),
-                              hold_on=True if timestep == num_iterations - 1 else False
-                              )
 
         ###############
         #    Solve!   #
