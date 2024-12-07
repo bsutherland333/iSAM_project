@@ -3,6 +3,8 @@
 import argparse
 import numpy as np
 
+import matplotlib.pyplot as plt
+
 from data_parser import DataParser
 from factor_graph_manager import FactorGraphManager
 from models import motion_model, inverse_motion_model, sensor_model, inverse_sensor_model
@@ -14,18 +16,19 @@ from jax_jacobians import make_F_H_J_G
 from column_reorderers import passthrough as reorder
 from iterative_matrix_augmenters import update_measurement as augment_r_measurement
 from iterative_matrix_augmenters import update_variable as augment_r_variable
-from iterative_matrix_augmenters import add_new_pose, add_new_measurement
 from qr_factorizers import np_qr as qr
 from solvers import scipy_solver as solver
 
+from models import _wrap_within_pi
+
 # Set numpy to not wrap arrays
-np.set_printoptions(linewidth=np.inf)
+np.set_printoptions(linewidth=np.inf, suppress=False)
 
 def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, num_iters_before_batch: int, plot_live: bool):
     range_measurement_std = 0.1
-    bearing_measurement_std = 0.05
-    odom_translation_std = 0.05
-    odom_rotation_std = 0.02
+    bearing_measurement_std = 0.1
+    odom_translation_std = 0.1
+    odom_rotation_std = 0.05
     if data_filepath != '':
         data = DataParser(data_filepath)
         x = data.get_initial_state()
@@ -35,7 +38,7 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
         true_landmark_positions = np.array([[0, 0], [3, 0], [6, 0], [0, 3], [3, 3], [6, 3]], float).T
         data = Simulator(inverse_motion_model,
                          sensor_model,
-                         np_seed=0,
+                         np_seed=2,
                          initial_state=x,
                          landmark_locations=true_landmark_positions,
                          range_measurement_std=range_measurement_std,
@@ -74,6 +77,8 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
     len_pose_hist_at_last_reorder = len(pose_hist)
     added_pose_hist_idx_in_x = []   # Keeps track of the indices of the pose hists that were added in the incremental factorizer
     added_landmark_hist_idx_in_x = []   # Keeps track of the indices of the landmark hists that were added in the incremental factorizer
+    #idxs_of_thetas = np.zeros_like(x, int)     # Keeps track of the indices of the theta values (so we can wrap them)
+    #idxs_of_thetas[2][0] = 1
     last_odom_idx = 0   # Tracker to indicate where in the state array the last odometry is kept
 
     for timestep in range(num_iterations):
@@ -87,14 +92,13 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
         #################
         # Add the odometry to the factor graph manager for batch updates.
         # Also append new pose to the pose history.
-        previous_state = pose_hist[-3:]
+        previous_state = pose_hist[-3:].copy()
         factor_graph_manager.add_odometry(u, F, G)
         current_state = motion_model(previous_state, u)
         pose_hist = np.vstack((pose_hist, current_state))
 
         # [INCREMENTAL FACTORIZER] Add the new pose to the state vector and the R matrix
         # Compute the F and G Jacobians
-        # TODO: Should the angle part of the output of F and G also be wrapped?
         F_eval = factor_graph_manager.sqrt_inv_odometry_cov @ F(previous_state, current_state).reshape(3,3)
         G_eval = factor_graph_manager.sqrt_inv_odometry_cov @ G(previous_state, current_state).reshape(3,3)
 
@@ -110,13 +114,19 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
         # Transpose and append G
         w_T = np.hstack((w.T, G_eval))
         # Compute gamma (the RHS of Rx=d)
-        gamma = factor_graph_manager.sqrt_inv_odometry_cov @ (u - inverse_motion_model(previous_state, current_state))
+        d_prime = np.array(u - inverse_motion_model(previous_state, current_state))
+        #print(np.round(d_prime[0],8),np.round(d_prime[2],8))
+        #d_prime[0][0] = _wrap_within_pi(d_prime[0][0])
+        #d_prime[2][0] = _wrap_within_pi(d_prime[2][0])
+        gamma = factor_graph_manager.sqrt_inv_odometry_cov @ d_prime
         # Augment R and d with w_T and gamma
-        R, d = augment_r_variable(len(gamma), w_T, gamma, R, d)
+        R, d = augment_r_variable(len(current_state), w_T, gamma, R, d)
         # Add variable to the state vector
         x = np.vstack((x, current_state))
         last_odom_idx = len(x)-3    # Keep track of this in case we add a new landmark to the state
-        added_pose_hist_idx_in_x.append(last_odom_idx)
+        added_pose_hist_idx_in_x.append(last_odom_idx)  # So we know how to reorder the poses into pose hist
+        #idxs_of_thetas = np.vstack((idxs_of_thetas, np.zeros_like(current_state)))
+        #idxs_of_thetas[2][0] = 1
 
         #####################
         #    Measurements   #
@@ -146,7 +156,10 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
                                  # (the current state -- which is [-3:] in the state vector since we just appended it)
 
             # Compute gamma
-            gamma = factor_graph_manager.sqrt_inv_measurement_cov @ (current_measurement[:2] - sensor_model(current_state, current_landmark_state))
+            d_prime = np.array(current_measurement[:2] - sensor_model(current_state, current_landmark_state))
+            print(np.round(d_prime[1], 4))
+            d_prime[1][0] = _wrap_within_pi(d_prime[1][0])
+            gamma = factor_graph_manager.sqrt_inv_measurement_cov @ d_prime
 
             # If the landmark is new, just add it to the state vector
             if do_add_landmark_to_state:
@@ -157,6 +170,7 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
                 x = np.vstack((x, current_landmark_state))
                 # Note: Don't update the current pose idx
                 added_landmark_hist_idx_in_x.append(len(x)-2)
+                #idxs_of_thetas = np.vstack((idxs_of_thetas, np.zeros_like(current_landmark_state)))
             else:
                 # Add J where it should be based on the XL ordered landmark
                 idx = len(pose_hist) + landmark_id*2
@@ -179,14 +193,17 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
             A, b = factor_graph_manager.get_A_b_matrix(x)
             A_prime, P = reorder(A)
 
-            print(A.shape)
-
             # Factor A
             Q, R = qr(A_prime)
             d = Q.T @ b
 
             x_prime = solver(R, d)
             x += P @ x_prime
+
+            # wrap the theta portions of the state
+            # TODO: do we keep this? it is currently doing bad things
+            #for i in range(len(pose_hist)//3):
+            #    x[i*3-1][0] = _wrap_within_pi(x[i*3-1][0])
 
             # Set the flag to tell incremental solver that we need to look for the odometry in the state vector
             do_find_odometry = True
@@ -221,7 +238,13 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
                 landmark_hist = np.vstack((reordered_x[len_pose_hist_at_last_reorder:len_x_at_last_reorder], x[landmark_hist_slice_indices]))
 
 
+        for i,val in enumerate(pose_hist):
+            if i % 3 - 1 == 0:
+                assert abs(val[0]) < np.pi
+        
         if plot_live or timestep == num_iterations - 1:
+            #if timestep % 5 == 0:
+            #    plot_factor_graph(estimated_robot_poses=pose_hist.reshape(-1, 3).T,
             plot_factor_graph(estimated_robot_poses=pose_hist.reshape(-1, 3).T,
                               true_robot_poses=np.hstack(x_truth_hist),
                               estimated_landmark_positions=landmark_hist.reshape(-1, 2).T,
@@ -229,6 +252,8 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
                               #measurement_associations=np.hstack(measurement_hist),
                               hold_on=True if timestep == num_iterations - 1 else False
                               )
+
+        plt.waitforbuttonpress()
 
         print(f"timestep: {timestep}")
 
@@ -239,7 +264,7 @@ if __name__ == "__main__":
     parser.add_argument('-f', '--data-filepath', type=str, default='', help='Filepath to recorded data. If not provided, will use simulated data.')
     parser.add_argument('--use-iterative-solver', type=bool, default=False, help='Use iterative solver (iSAM) instead of batch solver (SAM).')
     parser.add_argument('--num-iters-before-batch', type=int, default=25, help='Number of iterations before running batch solver.')
-    parser.add_argument('-p', '--plot-live', type=bool, default=False, help='Plot the factor graph at each timestep.')
+    parser.add_argument('-p', '--plot-live', type=bool, default=True, help='Plot the factor graph at each timestep.')
     args = vars(parser.parse_args())
 
     main(**args)

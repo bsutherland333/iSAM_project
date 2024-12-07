@@ -135,34 +135,3 @@ def givens_rotation(i:int, k:int, R:np.ndarray, d:np.ndarray) -> tuple[np.ndarra
 
     return givens @ R, givens @ d
 
-from models import inverse_motion_model
-def add_new_pose(x: NDArray, u: NDArray, current_state: NDArray, previous_state_idx: int, R: NDArray, d: NDArray, sqrt_odom_cov: NDArray, F: Callable, G: Callable) -> tuple[NDArray, NDArray, NDArray, int]:
-    # ASSUMPTION: We receive exactly 1 odometry measurment every timestep (i.e. we add 1 new pose variable)
-    previous_state = x[previous_state_idx:previous_state_idx+3]
-    x = np.vstack((x, current_state))
-
-    # Compute gamma (RHS of Rx = d)
-    print(previous_state.shape, current_state.shape)
-    gamma = sqrt_odom_cov @ (u - inverse_motion_model(previous_state, current_state))
-
-    # Compute the Jacobians
-    F_evaluated = F(previous_state, u).reshape(3, 3)
-    G_evaluated = G(current_state)
-
-    # Form the w vector (gets added to the bottom of R)
-    w_T = np.zeros((F_evaluated.shape[0], R.shape[1]))
-    w_T[:,previous_state_idx:previous_state_idx+3] = sqrt_odom_cov @ F_evaluated
-    w_T = np.hstack((w_T, sqrt_odom_cov @ G_evaluated))     # Since current state idx is always at the end
-    R, d = update_variable(3, w_T, gamma, R, d)
-
-    return x, R, d
-
-
-def add_new_measurement():
-    pass
-
-
-
-
-
-

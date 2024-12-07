@@ -110,6 +110,7 @@ def plot_factor_graph(estimated_robot_poses=None,
     # Plot estimated robot poses
     if estimated_robot_poses is not None:
         plt.plot(estimated_robot_poses[0, :], estimated_robot_poses[1, :], 'ro-', label='Estimated Robot Poses')
+        plt.quiver(estimated_robot_poses[0, :], estimated_robot_poses[1, :], np.cos(estimated_robot_poses[2,:]), np.sin(estimated_robot_poses[2,:]), zorder=3, width=2, units='dots')
 
     # Plot estimated robot pose covariances with 3 sigma ellipses
     if estimated_robot_poses is not None and estimated_robot_covariances is not None:

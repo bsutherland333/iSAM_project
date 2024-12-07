@@ -28,7 +28,7 @@ class Simulator:
                     [[0, 0], [3, 0], [6, 0], [0, 3], [3, 3], [6, 3]],
                     float
                  ).T,
-                 dt:float = 1.0,
+                 dt:float = 0.5,
                  np_seed:int = 0,
 
                  max_measurement_range:float = 5.0,
