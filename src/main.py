@@ -22,13 +22,14 @@ from solvers import scipy_solver as solver
 from models import _wrap_within_pi
 
 # Set numpy to not wrap arrays
-np.set_printoptions(linewidth=np.inf, suppress=False)
+np.set_printoptions(linewidth=np.inf, suppress=True)
 
 def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, num_iters_before_batch: int, plot_live: bool):
-    range_measurement_std = 0.1
-    bearing_measurement_std = 0.05
-    odom_translation_std = 0.1
-    odom_rotation_std = 0.05
+    range_measurement_std = 0.001
+    bearing_measurement_std = 0.001 # 10*np.pi/180
+    odom_translation_std = 0.005
+    odom_rotation_std = 0.005
+    dt = 0.5
     if data_filepath != '':
         data = DataParser(data_filepath)
         x = data.get_initial_state()
@@ -44,7 +45,8 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
                          range_measurement_std=range_measurement_std,
                          bearing_measurement_std=bearing_measurement_std,
                          odometry_translation_std=odom_translation_std,
-                         odometry_rotation_std=odom_rotation_std)
+                         odometry_rotation_std=odom_rotation_std,
+                         dt=dt)
 
     F, H, J, G = make_F_H_J_G(inverse_motion_model, sensor_model)
     factor_graph_manager = FactorGraphManager(inverse_motion_model,
@@ -62,6 +64,7 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
     # Variables kept for a history and to XL order the variables before batch updating
     pose_best_estimate = x.copy()
     landmark_best_estimate = np.array([[]]).T
+    landmark_uncorrected_estimate = np.array([[]]).T
 
     # Housekeeping
     landmark_id_hist = []
@@ -77,8 +80,6 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
     len_pose_hist_at_last_reorder = len(pose_best_estimate)
     added_pose_hist_idx_in_x = []   # Keeps track of the indices of the pose hists that were added in the incremental factorizer
     added_landmark_hist_idx_in_x = []   # Keeps track of the indices of the landmark hists that were added in the incremental factorizer
-    #idxs_of_thetas = np.zeros_like(x, int)     # Keeps track of the indices of the theta values (so we can wrap them)
-    #idxs_of_thetas[2][0] = 1
     last_odom_idx = 0   # Tracker to indicate where in the state array the last odometry is kept
 
     for timestep in range(num_iterations):
@@ -98,11 +99,11 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
         # Get the next pose based on the odometry.
         # Use the current linearization point for incremental factorization, and the best linearization
         # point for batch updates.
-        previous_state = pose_best_estimate[-3:].copy() if perform_batch_update else x[-3:].copy()
+        previous_state = pose_best_estimate[-3:].copy() if perform_batch_update else x[last_odom_idx:last_odom_idx+3].copy()
         current_state = motion_model(previous_state, u)
 
         # TODO: Remove this line after debugging
-        u = inverse_motion_model(x_truth_hist[-2], x_truth_hist[-1])
+        # u = inverse_motion_model(x_truth_hist[-2], x_truth_hist[-1])
 
         # Add the odometry to the factor graph manager for batch updates.
         # Also append new pose to the pose history.
@@ -139,53 +140,64 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
         ######################
         ##    Measurements   #
         ######################
-        #for i in range(z.shape[1]):
-        #    current_measurement = z[:, i].reshape(-1, 1)
-        #    factor_graph_manager.add_measurement(current_measurement, H, J)
-        #    landmark_id = int(current_measurement[2][0])
+        for i in range(z.shape[1]):
+            current_measurement = z[:, i].reshape(-1, 1)
+            factor_graph_manager.add_measurement(current_measurement, H, J)
+            landmark_id = int(current_measurement[2][0])
 
-        #    do_add_landmark_to_state = False
+            do_add_landmark_to_state = False
 
-        #    if landmark_id not in landmark_id_hist:
-        #        landmark_guess = inverse_sensor_model(current_state, current_measurement[:2])
-        #        landmark_best_estimate = np.vstack((landmark_best_estimate, landmark_guess))
-        #        landmark_id_hist.append(landmark_id)
-        #        do_add_landmark_to_state = True
+            if landmark_id not in landmark_id_hist:
+                landmark_guess = inverse_sensor_model(current_state, current_measurement[:2])
+                #landmark_guess = inverse_sensor_model(motion_model(pose_best_estimate[-3:], u), current_measurement[:2])
+                landmark_best_estimate = np.vstack((landmark_best_estimate, landmark_guess))
+                landmark_uncorrected_estimate = np.vstack((landmark_uncorrected_estimate, landmark_guess))
+                landmark_id_hist.append(landmark_id)
+                do_add_landmark_to_state = True
 
-        #    # [INCREMENTAL FACTORIZER] Add the new measurement to the R vector
-        #    # Compute the H and J Jacobians
-        #    current_landmark_state = landmark_best_estimate[landmark_id*2:landmark_id*2+2]
-        #    H_eval = factor_graph_manager.sqrt_inv_measurement_cov @ H(current_state, current_landmark_state).reshape(2,3)
-        #    J_eval = factor_graph_manager.sqrt_inv_measurement_cov @ J(current_state, current_landmark_state).reshape(2,2)
+            # [INCREMENTAL FACTORIZER] Add the new measurement to the R vector
+            # Compute the H and J Jacobians
+            current_landmark_state = landmark_best_estimate[landmark_id*2:landmark_id*2+2] if perform_batch_update else landmark_uncorrected_estimate[landmark_id*2:landmark_id*2+2]
+            H_eval = factor_graph_manager.sqrt_inv_measurement_cov @ H(current_state, current_landmark_state).reshape(2,3)
+            J_eval = factor_graph_manager.sqrt_inv_measurement_cov @ J(current_state, current_landmark_state).reshape(2,2)
 
-        #    # Form the w vector
-        #    w = np.zeros((R.shape[1], H_eval.shape[0]))
-        #    w[-3:,:] = H_eval.T  # The Jacobian wrt the state will always take the last added state 
-        #                         # (the current state -- which is [-3:] in the state vector since we just appended it)
+            # Form the w vector
+            w = np.zeros((R.shape[1], H_eval.shape[0]))
+            w[-3:,:] = H_eval.T  # The Jacobian wrt the state will always take the last added state 
+                                 # (the current state -- which is [-3:] in the state vector since we just appended it)
 
-        #    # Compute gamma
-        #    d_prime = np.array(current_measurement[:2] - sensor_model(current_state, current_landmark_state))
-        #    gamma = factor_graph_manager.sqrt_inv_measurement_cov @ d_prime
+            # Compute gamma
+            d_prime = np.array(current_measurement[:2] - sensor_model(current_state, current_landmark_state))
+            gamma = factor_graph_manager.sqrt_inv_measurement_cov @ d_prime
 
-        #    # If the landmark is new, just add it to the state vector
-        #    if do_add_landmark_to_state:
-        #        # Add the J to the end since we are adding a new landmark to the state
-        #        w_T = np.hstack((w.T, J_eval))
+            # If the landmark is new, just add it to the state vector
+            if do_add_landmark_to_state:
+                # Add the J to the end since we are adding a new landmark to the state
+                w_T = np.hstack((w.T, J_eval))
 
-        #        R, d = augment_r_variable(2, w_T, gamma, R, d)
-        #        x = np.vstack((x, current_landmark_state))
-        #        # Note: Don't update the current pose idx
-        #        added_landmark_hist_idx_in_x.append(len(x)-2)
-        #    else:
-        #        # Add J where it should be based on the XL ordered landmark
-        #        idx = len(pose_best_estimate) + landmark_id*2
-        #        w[idx:idx+2,:] = J_eval.T
+                R, d = augment_r_variable(2, w_T, gamma, R, d)
+                x = np.vstack((x, current_landmark_state))
+                # Note: Don't update the current pose idx
+                added_landmark_hist_idx_in_x.append(len(x)-2)
+            else:
+                # Add J where it should be based on the XL ordered landmark
+                idx = len(pose_best_estimate) + landmark_id*2
+                w[idx:idx+2,:] = J_eval.T
 
-        #        # Reorder only the part of w that corresponds to the length of x at the last batch update
-        #        # (that is the only part of x that was reordered)
-        #        w[:len_x_at_last_reorder,:] = P @ w[:len_x_at_last_reorder,:]
+                # Reorder only the part of w that corresponds to the length of x at the last batch update
+                # (that is the only part of x that was reordered)
+                w[:len_x_at_last_reorder,:] = P @ w[:len_x_at_last_reorder,:]
 
-        #        R, d = augment_r_measurement(w.T, gamma, R, d)
+                R, d = augment_r_measurement(w.T, gamma, R, d)
+
+        if plot_live or timestep == num_iterations - 1:
+            plot_factor_graph(estimated_robot_poses=pose_best_estimate.reshape(-1, 3).T,
+                              true_robot_poses=np.hstack(x_truth_hist),
+                              estimated_landmark_positions=landmark_best_estimate.reshape(-1, 2).T,
+                              true_landmark_positions=true_landmark_positions,
+                              #measurement_associations=np.hstack(measurement_hist),
+                              hold_on=True if timestep == num_iterations - 1 else False
+                              )
 
         ###############
         #    Solve!   #
@@ -205,11 +217,6 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
             x_prime = solver(R, d)
             x_corrected = x + P @ x_prime
 
-            # wrap the theta portions of the state
-            # TODO: do we keep this? it is currently doing bad things
-            #for i in range(len(pose_hist)//3):
-            #    x[i*3-1][0] = _wrap_within_pi(x[i*3-1][0])
-
             # Set the flag to tell incremental solver that we need to look for the odometry in the state vector
             do_find_odometry = True
             last_odom_idx = len(pose_best_estimate) - 3
@@ -221,6 +228,10 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
             # Unpack the x vector into the pose_hist and landmark_hist arrays
             pose_best_estimate = x_corrected[:len(pose_best_estimate)]
             landmark_best_estimate = x_corrected[len(pose_best_estimate):]
+            landmark_uncorrected_estimate = landmark_best_estimate.copy()
+
+            # The batch solution is the "reset". Everything should be based on the batch's solution's output
+            x = x_corrected.copy()
 
         else:
             # Update the factorization incremental and solve
@@ -243,11 +254,6 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
             else:
                 landmark_best_estimate = np.vstack((reordered_x[len_pose_hist_at_last_reorder:len_x_at_last_reorder], x_corrected[landmark_hist_slice_indices]))
 
-
-        for i,val in enumerate(pose_hist):
-            if i % 3 - 1 == 0:
-                assert abs(val[0]) < np.pi
-        
         if plot_live or timestep == num_iterations - 1:
             plot_factor_graph(estimated_robot_poses=pose_best_estimate.reshape(-1, 3).T,
                               true_robot_poses=np.hstack(x_truth_hist),
@@ -257,7 +263,7 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
                               hold_on=True if timestep == num_iterations - 1 else False
                               )
 
-        plt.waitforbuttonpress()
+        # plt.waitforbuttonpress()
 
         print(f"timestep: {timestep}")
 
