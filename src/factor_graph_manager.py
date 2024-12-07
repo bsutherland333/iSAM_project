@@ -47,7 +47,7 @@ class FactorGraphManager:
         self.sqrt_inv_measurement_cov = np.array([[1/measurement_range_std, 0],
                                                   [0, 1/measurement_bearing_std]])
 
-        self.sqrt_inv_odometry_cov = np.array([[1/odometry_translational_std, 0, 0],
+        self.sqrt_inv_odometry_cov = np.array([[1/odometry_rotational_std, 0, 0],
                                                [0, 1/odometry_translational_std, 0],
                                                [0, 0, 1/odometry_rotational_std]])
 
