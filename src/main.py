@@ -270,9 +270,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-n', '--num-iterations', type=int, default=200, help='Number of iterations to run the algorithm for.')
     parser.add_argument('-f', '--data-filepath', type=str, default='', help='Filepath to recorded data. If not provided, will use simulated data.')
-    parser.add_argument('--use-iterative-solver', type=bool, default=False, help='Use iterative solver (iSAM) instead of batch solver (SAM).')
+    parser.add_argument('--use-iterative-solver', action='store_true', default=False, help='Use iterative solver (iSAM) instead of batch solver (SAM).')
     parser.add_argument('--num-iters-before-batch', type=int, default=25, help='Number of iterations before running batch solver.')
-    parser.add_argument('-p', '--plot-live', type=bool, default=True, help='Plot the factor graph at each timestep.')
+    parser.add_argument('-p', '--plot-live', default=False, action='store_true', help='Plot the factor graph at each timestep.')
+    parser.add_argument('--plot-heading-vector', default=False, action='store_true', help='Plot the heading at each robot pose')
     args = vars(parser.parse_args())
 
     main(**args)
