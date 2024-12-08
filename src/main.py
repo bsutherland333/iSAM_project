@@ -27,7 +27,7 @@ np.set_printoptions(linewidth=np.inf, suppress=True)
 
 def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, num_iters_before_batch: int, plot_live: bool, plot_heading_vector: bool):
     range_measurement_std = 0.1
-    bearing_measurement_std = 0.01 # 10*np.pi/180
+    bearing_measurement_std = 10*np.pi/180
     odom_translation_std = 0.005
     odom_rotation_std = 0.005
     dt = 0.5
@@ -222,9 +222,6 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
             pose_best_estimate = x_corrected[:len(pose_best_estimate)]
             landmark_best_estimate = x_corrected[len(pose_best_estimate):]
             landmark_uncorrected_estimate = landmark_best_estimate.copy()
-
-            # The batch solution is the "reset". Everything should be based on the batch's solution's output
-            x = x_corrected.copy()
 
         else:
             # Update the factorization incremental and solve
