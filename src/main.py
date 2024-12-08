@@ -18,13 +18,14 @@ from iterative_matrix_augmenters import update_measurement as augment_r_measurem
 from iterative_matrix_augmenters import update_variable as augment_r_variable
 from qr_factorizers import np_qr as qr
 from solvers import scipy_solver as solver
+from covariance_extraction import get_robot_and_landmark_covariances as compute_covariance
 
 from models import _wrap_within_pi
 
 # Set numpy to not wrap arrays
 np.set_printoptions(linewidth=np.inf, suppress=True)
 
-def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, num_iters_before_batch: int, plot_live: bool):
+def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, num_iters_before_batch: int, plot_live: bool, plot_heading_vector: bool):
     range_measurement_std = 0.1
     bearing_measurement_std = 0.01 # 10*np.pi/180
     odom_translation_std = 0.005
@@ -247,12 +248,17 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
                 landmark_best_estimate = np.vstack((reordered_x[len_pose_hist_at_last_reorder:len_x_at_last_reorder], x_corrected[landmark_hist_slice_indices]))
 
         if plot_live or timestep == num_iterations - 1:
+            robot_covs, landmark_covs = compute_covariance(len(pose_best_estimate), R)
+            print(landmark_covs)
             plot_factor_graph(estimated_robot_poses=pose_best_estimate.reshape(-1, 3).T,
+                              estimated_robot_covariances=robot_covs,
                               true_robot_poses=np.hstack(x_truth_hist),
                               estimated_landmark_positions=landmark_best_estimate.reshape(-1, 2).T,
+                              estimated_landmark_covariances=landmark_covs,
                               true_landmark_positions=true_landmark_positions,
                               #measurement_associations=np.hstack(measurement_hist),
-                              hold_on=True if timestep == num_iterations - 1 else False
+                              hold_on=True if timestep == num_iterations - 1 else False,
+                              plot_heading_vector=plot_heading_vector
                               )
 
         # plt.waitforbuttonpress()

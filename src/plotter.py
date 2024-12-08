@@ -12,6 +12,7 @@ def plot_factor_graph(estimated_robot_poses=None,
                       measurement_associations=None,
                       pause_duration=0.4,
                       hold_on=False,
+                      plot_heading_vector=False,
                       ):
     """
     Plots the robot, landmarks, and measurements (estimated and true) in a 2D plot. All inputs are
@@ -99,8 +100,9 @@ def plot_factor_graph(estimated_robot_poses=None,
                           width=3 * np.sqrt(eigvals[0]),
                           height=3 * np.sqrt(eigvals[1]),
                           angle=np.rad2deg(angle),
-                          edgecolor='g',
-                          facecolor='none')
+                          edgecolor='k',
+                          facecolor='none',
+                          zorder=4)
             plt.gca().add_artist(ell)
 
     # Plot true robot poses
@@ -110,7 +112,8 @@ def plot_factor_graph(estimated_robot_poses=None,
     # Plot estimated robot poses
     if estimated_robot_poses is not None:
         plt.plot(estimated_robot_poses[0, :], estimated_robot_poses[1, :], 'ro-', label='Estimated Robot Poses')
-        plt.quiver(estimated_robot_poses[0, :], estimated_robot_poses[1, :], np.cos(estimated_robot_poses[2,:]), np.sin(estimated_robot_poses[2,:]), zorder=3, width=2, units='dots')
+        if plot_heading_vector:
+            plt.quiver(estimated_robot_poses[0, :], estimated_robot_poses[1, :], np.cos(estimated_robot_poses[2,:]), np.sin(estimated_robot_poses[2,:]), zorder=3, width=2, units='dots')
 
     # Plot estimated robot pose covariances with 3 sigma ellipses
     if estimated_robot_poses is not None and estimated_robot_covariances is not None:
@@ -122,8 +125,9 @@ def plot_factor_graph(estimated_robot_poses=None,
                           width=3 * np.sqrt(eigvals[0]),
                           height=3 * np.sqrt(eigvals[1]),
                           angle=np.rad2deg(angle),
-                          edgecolor='r',
-                          facecolor='none')
+                          edgecolor='k',
+                          facecolor='none',
+                          zorder=4)
             plt.gca().add_artist(ell)
 
     plt.legend()
