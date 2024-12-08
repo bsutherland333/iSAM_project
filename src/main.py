@@ -249,7 +249,6 @@ def main(num_iterations: int, data_filepath: str, use_iterative_solver: bool, nu
 
         if plot_live or timestep == num_iterations - 1:
             robot_covs, landmark_covs = compute_covariance(len(pose_best_estimate), R)
-            print(landmark_covs)
             plot_factor_graph(estimated_robot_poses=pose_best_estimate.reshape(-1, 3).T,
                               estimated_robot_covariances=robot_covs,
                               true_robot_poses=np.hstack(x_truth_hist),
