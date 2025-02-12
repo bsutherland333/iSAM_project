@@ -97,8 +97,8 @@ def plot_factor_graph(estimated_robot_poses=None,
             eigvals, eigvecs = np.linalg.eig(cov)
             angle = np.arctan2(eigvecs[1, 0], eigvecs[0, 0])
             ell = Ellipse(xy=(estimated_landmark_positions[0, i], estimated_landmark_positions[1, i]),
-                          width=3 * np.sqrt(eigvals[0]),
-                          height=3 * np.sqrt(eigvals[1]),
+                          width=3 * np.sqrt(eigvals[0]) * 2,
+                          height=3 * np.sqrt(eigvals[1]) * 2,
                           angle=np.rad2deg(angle),
                           edgecolor='k',
                           facecolor='none',
